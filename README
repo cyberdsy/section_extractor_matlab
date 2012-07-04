@@ -1,1 +1,9 @@
-blah blah blah
+GUI written in Matlab to crop tissue sections from slide scanner images.
+
+Written by D. Matthews, Queensland Brain Institute.
+
+Will work for bright field and fluorescence images.
+
+Based on segmenting a low resolution version of the image and then rescaling to find the ROI in the very large slide scanner image.
+
+This uses a file-to-file technique so that the (very large) ROI is never fully loaded into memory.
