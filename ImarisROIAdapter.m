@@ -1,7 +1,9 @@
 classdef ImarisROIAdapter < ImageAdapter
+    
 
     properties(Access = public)
-      RawMeta
+      reslevel         % Resolution level
+      Channels         % Array containing channels
     end    
     
     properties (Constant = true)
@@ -17,7 +19,6 @@ classdef ImarisROIAdapter < ImageAdapter
         % File related properties
         Filename         % Filename
         Mode             % Mode
-        NumChannels
         zSlices
         TimePoints
         Channel
@@ -55,23 +56,26 @@ classdef ImarisROIAdapter < ImageAdapter
             if strcmpi(mode, 'w')
                 % create a new file, discard if existing
                 
-                if nargin ~= 4
+                if nargin ~= 6
                     error(message('images:TiffAdapter:invalidInputParamCount'));
                 end
                 
+                obj.reslevel = varargin{1};
+                obj.Channels = varargin{2};
+
                 % verify that our file is either MxN or MxNx3
-                obj.ImageSize = varargin{1};
-                if length(obj.ImageSize) < 2 || length(obj.ImageSize) > 3 ||...
-                        (length(obj.ImageSize) == 3 && obj.ImageSize(3) ~= 1 && ...
-                        obj.ImageSize(3) ~= 3)
-                    error(message('images:TiffAdapter:invalidDims'));
-                end
+                obj.ImageSize = varargin{3};
+%                 if length(obj.ImageSize) < 2 || length(obj.ImageSize) > 3 ||...
+%                         (length(obj.ImageSize) == 3 && obj.ImageSize(3) ~= 1 && ...
+%                         obj.ImageSize(3) ~= 3)
+%                     error(message('images:TiffAdapter:invalidDims'));
+%                 end
                 if (length(obj.ImageSize) == 3 && obj.ImageSize(3) == 1)
                     obj.ImageSize = obj.ImageSize(1:2);
                 end
                 
                 % validate data type
-                obj.FillVal = varargin{2};
+                obj.FillVal = varargin{4};
                 obj.Datatype = class(obj.FillVal);
                 non_writable_types = {'int64','uint64'};
                 if any(strcmpi(obj.Datatype,non_writable_types))
@@ -94,24 +98,29 @@ classdef ImarisROIAdapter < ImageAdapter
                 % to the mex routines, we use the 'PixelRegion' syntax of
                 % IMREAD for read-only TIFF files instead of the Tiff
                 % class.
-                
+                 if nargin ~= 4
+                    error(message('images:TiffAdapter:invalidInputParamCount'));
+                 end
+                 
+                 res = varargin{1};
+                 Chans = varargin{2};
                  % Open the file.
                  obj.Filename = filename;
                  %obj.Channel = channel;
                  fid = fopen(filename,'r');
 
                  %Read the meta data
-                 meta = imreadH5meta(filename);
+                 meta = imreadImarismeta(filename,res);
 
                  % Specify image width and height.
                  width = meta.width;
                  height = meta.height;
-                 numchan = meta.channels;
-                 obj.NumChannels = numchan;
+                 %numchan = meta.channels;
+                 obj.Channels = Chans;
                  obj.zSlices = meta.zsize;
                  obj.TimePoints = meta.nframes;
-                 obj.ImageSize = [height width numchan];  
-
+                 obj.ImageSize = [height width length(Chans)];  
+                 obj.reslevel = res;
                  % Close the file handle
                  fclose(fid);
                 
@@ -185,15 +194,14 @@ classdef ImarisROIAdapter < ImageAdapter
         
         %----------------------------------------------
         function data = readRegion(obj, region_start, region_size)
-          rows = region_start(1):(region_start(1) + region_size(1) - 1);
-          cols = region_start(2):(region_start(2) + region_size(2) - 1);
-          numrows = length(rows);
-          numcols = length(cols);
-          rowstart = region_start(1);
-          colstart = region_start(2);
-          data = imreadH5(obj.Filename,obj.zSlices,obj.TimePoints,...
-              obj.NumChannels,[rowstart numrows colstart numcols]);
-          %data = cast(data,'uint8');
+            rows = region_start(1):(region_start(1) + region_size(1) - 1);
+            cols = region_start(2):(region_start(2) + region_size(2) - 1);
+            numrows = length(rows);
+            numcols = length(cols);
+            rowstart = region_start(1);
+            colstart = region_start(2);
+            data = imreadImaris(obj.Filename,obj.ImageSize,obj.reslevel,obj.zSlices,obj.TimePoints,...
+              obj.Channels,[rowstart numrows colstart numcols]);
         end % readRegion
         
         
@@ -203,6 +211,7 @@ classdef ImarisROIAdapter < ImageAdapter
             if obj.ReadOnly
                 error(message('images:TiffAdapter:readOnly'));
             end
+            
             
             assert((length(obj.ImageSize) == 2 && size(data,3) == 1) || ...
                 (length(obj.ImageSize) == 3 && length(size(data)) == 3 && obj.ImageSize(3) == size(data,3)),...

@@ -954,7 +954,7 @@ if isempty(data)
     return
 end
 
-if size(data,3) ~= 3
+if size(data,3) == 2
     data(:,:,3) = 0;
 end
 
@@ -991,11 +991,13 @@ function danputBlock(dest,start_location,data,output_size)
 if isempty(data)
     return
 end
+size(data)
+size(output_size)
 
-if size(data,3) ~= 3
+if size(data,3) == 2
     data(:,:,3) = 0;
 end
-% 
+
 target_start_row = start_location(1);
 target_start_col = start_location(2);
 

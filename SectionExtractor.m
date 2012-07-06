@@ -22,7 +22,7 @@ function varargout = SectionExtractor(varargin)
 
 % Edit the above text to modify the response to help SectionExtractor
 
-% Last Modified by GUIDE v2.5 04-Jul-2012 10:36:53
+% Last Modified by GUIDE v2.5 05-Jul-2012 16:08:53
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -58,6 +58,7 @@ userData.dilateim = 'true';
 userData.closeim = 'true';
 userData.erodeim = 'true';
 userData.ImageMode = 'fluoro';
+userData.OutputMode = 'Single';
 userData.Segmentation.choice = 'all';
 
 % Choose default command line output for SectionExtractor
@@ -95,10 +96,9 @@ elseif ~isfield(userData,'thumbNailFile')
     errordlg('Load a thumbnail image first','modal')
     return    
 else
+    numChan = userData.inChannels;
     choice = userData.Segmentation.choice;
     ROIvec = userData.ROIslide;
-    slideFile = userData.slideFile;
-    my_adapter = ImarisROIAdapter(slideFile,'r');
     
     switch choice
         case 'all'
@@ -110,12 +110,37 @@ else
             first = 1;
             last = length(contents);
     end
+    
+    mode = userData.OutputMode;
 
+    switch mode
+        case 'RGB'
+                outChan = 1:3;
+                inChan = 1:numChan;
+        case 'Single'
+                outChan = str2double(get(handles.edit_outchan,'String'));  
+                if outChan > numChan
+                    errordlg('The channel does not exist in the input image','modal')
+                    return
+                else
+                    inChan = outChan;
+                end
+    end
+
+    
     popupselec = get(handles.popupmenu_scale,'Value');
     popupcontents = cellstr(get(handles.popupmenu_scale,'String'));
     scalefact = str2num(popupcontents{popupselec});
-    
+    if scalefact
+        reslevel = log2(scalefact);
+    end
     blocksize = [2000 2000];
+
+    slideFile = userData.slideFile;
+    fname_length = length(slideFile);
+    slideFilename = slideFile(1:fname_length - 4);
+    
+    my_adapter = ImarisROIAdapter(slideFile,'r',reslevel,inChan);
 
     tic
 
@@ -125,48 +150,55 @@ else
     %of coordinates in bounding box. Or set values of ROI if these are known
     %and make iImage = 1 (ROI = [x y width height].
     for ii = first: last
-         iSection = contents(ii);  
+        iSection = contents(ii);  
         % Crop a portion of the image set by the bounding box
         ROI = ROIvec(iSection,:);
+        outImageSize = [floor(ROI(3)) floor(ROI(4)) length(outChan)];
         
-        %set up the output image size and cropping function
-        outImageSize = [floor(ROI(3)) floor(ROI(4)) 3];
-        imgCropFcn = @(block_struct) LargeImageCropFcn(block_struct.data,block_struct.location,blocksize,ROI);
-
-
-        FillVal = 1;
-        FillVal = uint8(FillVal);
-
         % make filename for each tissue section
         if iSection < 10
-            tiss_seq_tif = sprintf('tissue_section_00%d.tif',iSection);
+            tiss_seq_tif = sprintf([slideFilename,'section_00%d.tif'],iSection);
         elseif iSection >= 10 && iSection < 100
-            tiss_seq_tif = sprintf('tissue_section_0%d.tif',iSection);
+            tiss_seq_tif = sprintf([slideFilename,'section_0%d.tif'],iSection);
         elseif iSection >= 100
-            tiss_seq_tif = sprintf('tissue_section_%d.tif',iSection);
+            tiss_seq_tif = sprintf([slideFilename,'section_%d.tif'],iSection);
         end
+        
+        if outImageSize(1) > blocksize(1) || outImageSize(2) > blocksize(2)
+            %display tissue section name and ROI vector to command line
+            tiss_seq_tif
+            ROI
+            
+            %set up the output image size and cropping function
+            imgCropFcn = @(block_struct) LargeImageCropFcn(block_struct.data,block_struct.location,blocksize,ROI);
 
-        %display tissue section name and ROI vector to command line
-        tiss_seq_tif
-        ROI
+            FillVal = 1;
+            FillVal = uint8(FillVal);
 
-        %do the cropping and saving of new images
-        my_output_adapter = ImarisROIAdapter(tiss_seq_tif,'w',outImageSize,FillVal);
-        blockprocROI(my_adapter,blocksize,imgCropFcn,'UseParallel',true,'Destination',my_output_adapter);
-        my_output_adapter.close
-        clear my_output_adapter;
-        if scalefact
-            disp('Resizing')
-            if iSection < 10
-                tiss_seq_tif_small = sprintf('tissue_section_new_00%d.tif',iSection);
-            elseif iSection >= 10 && iSection < 100
-                tiss_seq_tif_small = sprintf('tissue_section_new_0%d.tif',iSection);
-            elseif iSection >= 100
-                tiss_seq_tif_small = sprintf('tissue_section_new_%d.tif',iSection);
+            %do the cropping and saving of new images
+            my_output_adapter = ImarisROIAdapter(tiss_seq_tif,'w',reslevel,outChan,outImageSize,FillVal);
+            blockprocROI(my_adapter,blocksize,imgCropFcn,'UseParallel',true,'Destination',my_output_adapter);
+            my_output_adapter.close
+            clear my_output_adapter;
+        else
+            %display tissue section name and ROI vector to command line
+            tiss_seq_tif
+            ROI
+            
+            pixRegion(1) = ROI(1);
+            pixRegion(2) = ROI(3);
+            pixRegion(3) = ROI(2);
+            pixRegion(4) = ROI(4);
+            inChan
+            img = imreadImaris(slideFile,outImageSize,reslevel,1,1,inChan,pixRegion);
+            % if the output image is RGB but the input number of channels
+            % is 2
+            
+            if length(outChan) > numChan
+                img(:,:,3) = uint8(zeros(outImageSize(1),outImageSize(2)));
             end
-            resize =  @(block_struct) imresize(block_struct.data,1/scalefact);
-            blockproc(tiss_seq_tif,blocksize,resize,'UseParallel',true,'Destination',tiss_seq_tif_small);
-            delete(tiss_seq_tif)
+            imwrite(uint8(img),tiss_seq_tif,'compression','lzw');
+
         end
     end
     toc
@@ -252,22 +284,23 @@ cd(path);
 set(handles.edit_slideFile,'String',fname,'Value',1);
 
 userData.slideFile = fname;
-meta = imreadH5meta(fname);
+meta = imreadImarismeta(fname,0);
 slideSize(1,1) = meta.height;
 slideSize(1,2) = meta.width;
-channels = meta.channels;
-location = '/DataSet/ResolutionLevel 4/TimePoint 0/Channel ';
-for ichan = 1:length(channels)
-    chanstr = [location,num2str(ichan-1),'/Data'];
-    thumb(:,:,ichan) = h5read(fname,chanstr);
-end
+thumbmeta = imreadImarismeta(fname,4);
+thumbSize(1,1) = thumbmeta.height;
+thumbSize(1,2) = thumbmeta.width;
+numchan = meta.channels;
+channel = str2double(get(handles.edit_channel,'String'));
+thumb = imreadImaris(fname,thumbSize,4,1,1,channel);
 set(handles.figure1,'CurrentAxes',handles.axes1)
-imagesc(thumb'),colormap 'gray',axis off
+imagesc(thumb),colormap 'gray',axis off
 
 userData.thumbNailFile = fname;
-userData.thumbNailIm = thumb';
+userData.thumbNailIm = thumb;
 
 userData.slideSize = slideSize;
+userData.inChannels = numchan;
 set(handles.figure1, 'UserData', userData);
 
 
@@ -445,16 +478,27 @@ else
     
     if channel > 0
         
-    
+        fname = userData.slideFile;
         threshlo = str2double(get(handles.edit_threshlo,'String'));
+        popupselec = get(handles.popupmenu_scale,'Value');
+        popupcontents = cellstr(get(handles.popupmenu_scale,'String'));
+        scalefact = str2num(popupcontents{popupselec});
+        if isempty(scalefact)
+            reslevel = 1;
+        else
+            reslevel = log2(scalefact);
+        end
+        meta = imreadImarismeta(fname,reslevel);
+        slideSize(1,1) = meta.height;
+        slideSize(1,2) = meta.width;
 
         thumb = userData.thumbNailIm;
         dilateim = userData.dilateim;
         closeim = userData.closeim;
         erodeim = userData.erodeim;
-        slideSize = userData.slideSize;
         thumbSize = size(thumb);
         thumbSize = thumbSize(1,1:2);
+        
         scale = double(thumbSize) ./ double(slideSize);
         mode = userData.ImageMode;
 
@@ -532,6 +576,7 @@ else
         userData.Sections = s;
         userData.ROIslide = ROIslide;
         userData.section_map = section_map;
+        userData.slideSize = slideSize;
         set(handles.figure1,'UserData',userData);        
         set(handles.text_numROIs,'String',strcat('Number of sections = ',num2str(numel(s))));
         set(handles.text_numROIs,'Visible','on');
@@ -746,3 +791,43 @@ function popupmenu_scale_CreateFcn(hObject, eventdata, handles)
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
+
+
+function edit_outchan_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_outchan (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_outchan as text
+%        str2double(get(hObject,'String')) returns contents of edit_outchan as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit_outchan_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_outchan (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% --- Executes when selected object is changed in uipanel_imout.
+function uipanel_imout_SelectionChangeFcn(hObject, eventdata, handles)
+% hObject    handle to the selected object in uipanel_imout 
+% eventdata  structure with the following fields (see UIBUTTONGROUP)
+%	EventName: string 'SelectionChanged' (read only)
+%	OldValue: handle of the previously selected object or empty if none was selected
+%	NewValue: handle of the currently selected object
+% handles    structure with handles and user data (see GUIDATA)
+userData = get(handles.figure1, 'UserData');
+switch get(eventdata.NewValue,'Tag') % Get Tag of selected object.
+    case 'radiobutton_RGB'
+        userData.OutputMode = 'RGB';
+    case 'radiobutton_single'
+        userData.OutputMode = 'Single';
+end
+set(handles.figure1, 'UserData', userData);
