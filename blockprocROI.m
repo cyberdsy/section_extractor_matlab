@@ -1,225 +1,11 @@
 function result_image = blockprocROI(source,block_size,fun,varargin)
-%BLOCKPROC Distinct block processing for image.
-%   B = BLOCKPROC(A,[M N],FUN) processes the image A by applying the
-%   function FUN to each distinct M-by-N block of A and concatenating the
-%   results into the output matrix B.  FUN is a function handle to a
-%   function that accepts a "block struct" as input and returns a matrix,
-%   vector, or scalar Y:
-%
-%       Y = FUN(BLOCK_STRUCT)
-%
-%   For each block of data in the input image, A, BLOCKPROC will pass the
-%   block in a "block struct" to the user function, FUN, to produce Y, the
-%   corresponding block in the output image.  If Y is empty, then no output
-%   is generated and BLOCKPROC returns empty after processing all blocks.
-%
-%   A "block struct" is a MATLAB structure that contains the block data as
-%   well as other information about the block.  Fields in the block struct
-%   are:
-%
-%       BLOCK_STRUCT.border : a 2-element vector, [V H], that specifies the
-%                             size of the vertical and horizontal padding
-%                             around the block of data (see 'BorderSize'
-%                             argument below).
-%
-%       BLOCK_STRUCT.blockSize : a 2-element vector, [rows cols],
-%                                specifying the size of the block data. If
-%                                a border has been specified, the size does
-%                                not include the border pixels.
-%
-%       BLOCK_STRUCT.data : M-by-N or M-by-N-by-P matrix of block data plus
-%                           any included border pixels.
-%
-%       BLOCK_STRUCT.imageSize : a 2-element vector, [rows cols],
-%                                specifying the full size of the input
-%                                image.
-%
-%       BLOCK_STRUCT.location : a 2-element vector, [row col], that
-%                               specifies the position of the first pixel
-%                               (minimum-row, minimum-column) of the block
-%                               data in the input image.  If a border has
-%                               been specified, the location refers to the
-%                               first pixel of the discrete block data, not
-%                               the added border pixels.
-%
-%   B = BLOCKPROC(SRC_FILENAME,[M N],FUN) processes the image specified by
-%   SRC_FILENAME, reading and processing one block at a time.  This syntax
-%   is useful for processing very large images since only one block of the
-%   image is read into memory at a time.  If the output matrix B is too
-%   large to fit into memory, then you should additionally use the
-%   'Destination' parameter/value pair to write the output to a file.  See
-%   below for information on supported file types and parameters.
-%
-%   B = BLOCKPROC(ADAPTER,[M N],FUN) processes the source image specified
-%   by ADAPTER, an ImageAdapter object.  ImageAdapters are user-defined
-%   classes that provide BLOCKPROC with a common API for reading and
-%   writing to a particular image file format.  See the documentation for
-%   ImageAdapter for more details.
-%
-%   BLOCKPROC(...,PARAM1,VAL1,PARAM2,VAL2,...) processes the input image,
-%   specifying parameters and corresponding values that control various
-%   aspects of the block behavior.  Parameter name case does not matter.
-%
-%   Parameters include:
-%
-%   'Destination'       The destination for the output of BLOCKPROC.  When
-%                       specified, BLOCKPROC will not return the processed
-%                       image as an output argument, but instead write the
-%                       output to the 'Destination'.  Valid 'Destination'
-%                       parameters are:
-%
-%                          TIFF filename: a string filename ending with
-%                             '.tif'.  This file will be overwritten if it
-%                             exists.
-%
-%                          ImageAdapter object: an instance of an
-%                             ImageAdapter class.  ImageAdapters provide an
-%                             interface for reading and writing to
-%                             arbitrary image file formats.  See the
-%                             documentation for ImageAdapter for more
-%                             information.
-%
-%                       The 'Destination' parameter is useful when you
-%                       expect your output to be too large to practically
-%                       fit into memory.  It provides a workflow for
-%                       file-to-file image processing for arbitrarily large
-%                       images.
-%
-%   'BorderSize'        A 2-element vector, [V H], specifying the amount of
-%                       border pixels to add to each block.  V rows are
-%                       added above and below each block, H columns are
-%                       added left and right of each block.  The size of
-%                       each resulting block will be:
-%                           [M + 2*V, N + 2*H]
-%                       The default is [0 0], meaning no border.
-%
-%                       By default, the border is automatically removed
-%                       from the result of FUN.  See the 'TrimBorder'
-%                       parameter for more information.
-%
-%                       Blocks with borders that extend beyond the edges of
-%                       the image are padded with zeros.
-%
-%   'TrimBorder'        A logical scalar.  When set to true, BLOCKPROC
-%                       trims off border pixels from the output of the user
-%                       function, FUN.  V rows are removed from the top and
-%                       bottom of the output of FUN, and H columns are
-%                       removed from the left and right edges, where V and
-%                       H are defined by the 'BorderSize' parameter.  The
-%                       default is true, meaning borders are automatically
-%                       removed from the output of FUN.
-%
-%   'PadMethod'         The PadMethod determines how BLOCKPROC will pad the
-%                       image boundary when necessary.  Options are:
-%
-%                         X             Pads the image with a scalar (X)
-%                                       pad value.  By default X == 0.
-%                         'replicate'   Repeats border elements of A.
-%                         'symmetric'   Pads array with mirror reflections
-%                                       of itself.
-%
-%   'PadPartialBlocks'  A logical scalar.  When set to true, BLOCKPROC will
-%                       pad partial blocks to make them full-sized (M-by-N)
-%                       blocks.  Partial blocks arise when the image size
-%                       is not exactly divisible by the block size.  If
-%                       they exist, partial blocks will lie along the right
-%                       and bottom edge of the image.  The default is
-%                       false, meaning the partial blocks are not padded,
-%                       but processed as-is.
-%
-%                       BLOCKPROC uses zeros to pad partial blocks when
-%                       necessary.
-%
-%   'UseParallel'       A logical scalar.  When set to true, BLOCKPROC will
-%                       attempt to run in parallel mode, distributing the
-%                       processing across multiple workers (MATLAB
-%                       sessions) in an open MATLAB pool.  BLOCKPROC
-%                       requires the Parallel Computing Toolbox to run in
-%                       parallel mode.  When running in parallel mode, the
-%                       input image cannot be an ImageAdapter object.  See
-%                       the documentation for MATLABPOOL for information on
-%                       configuring your parallel environment.
-%
-%   File Format Support
-%   -------------------
-%   Input and output files for BLOCKPROC (as specified by SRC_FILENAME
-%   and/or the 'Destination' parameter) must be of the following file types
-%   and must be named with one of the listed file extensions:
-%
-%       Read / Write File Formats
-%       -------------------------
-%       TIFF: *.tif, *.tiff
-%       JPEG2000: *.jp2, *.j2c, *.j2k
-%
-%       Read-Only File Formats
-%       ----------------------
-%       JPEG2000: *.jpf, *.jpx
-%
-%   See the reference page for BLOCKPROC for additional file format
-%   specific limitations.
-%
-%   Block Sizes
-%   -----------
-%   When using BLOCKPROC to either read or write image files, file access
-%   can be an important factor in performance.  In general, selecting
-%   larger block sizes will reduce the number of times BLOCKPROC will have
-%   to access the disk, at the cost of using more memory to process each
-%   block.  Knowledge of the file format layout on disk can also be useful
-%   in selecting block sizes that minimize the number of times the disk is
-%   accessed.
-%
-%   Examples
-%   --------
-%   This simple example uses the IMRESIZE function to generate an image
-%   thumbnail.
-%
-%       fun = @(block_struct) imresize(block_struct.data,0.15);
-%       I = imread('pears.png');
-%       I2 = blockproc(I,[100 100],fun);
-%       figure;
-%       imshow(I);
-%       figure;
-%       imshow(I2);
-%
-%   This example uses BLOCKPROC to set the pixels in each 32-by-32 block
-%   to the standard deviation of the elements in that block.
-%
-%       fun = @(block_struct) std2(block_struct.data) * ones(size(block_struct.data));
-%       I2 = blockproc('moon.tif',[32 32],fun);
-%       figure;
-%       imshow('moon.tif');
-%       figure;
-%       imshow(I2,[]);
-%
-%   This example uses BLOCKPROC to switch the red and green bands of an RGB
-%   image and writes the results to a new TIFF file.
-%
-%       I = imread('peppers.png');
-%       fun = @(block_struct) block_struct.data(:,:,[2 1 3]);
-%       blockproc(I,[200 200],fun,'Destination','grb_peppers.tif');
-%       figure;
-%       imshow('peppers.png');
-%       figure;
-%       imshow('grb_peppers.tif');
-%
-%   This example uses BLOCKPROC to convert a Tiff image into a new JPEG2000
-%   image.
-%
-%       fun = @(block_struct) block_struct.data;
-%       blockproc('largeImage.tif',[1024 1024],fun,'Destination','New.jp2');
-%
-%   See also COLFILT, FUNCTION_HANDLE, IMAGEADAPTER, NLFILTER.
-
-%   Copyright 2008-2011 The MathWorks, Inc.
-%   $Revision: 1.1.6.13.2.1 $  $Date: 2011/07/18 00:32:41 $
-%
 %   This is a heavily modified version of blockproc specifically for the
 %   task of cropping ROIs from very large images. It should only be used
 %   for this purpose and should only be used in conjunction with
 %   LargeImageCropFcn.m.
 %   Modifications written by Daniel Matthews, QBI Microscopy officer
 %   (d.matthews1@uq.edu.au).
-%   Last modified: 25/05/12
+%   Last modified: 09/06/12
 
 % parse all params and set appropriate defaults
 [source,fun,options] = parse_inputs(source,block_size,fun,varargin{:});
@@ -287,7 +73,7 @@ block_struct.location = [1 1];
 rows_probed = false;
 cols_probed = false;
 [output_block ROIvec fun_nargout] = blockprocFunDispatcher(fun,block_struct,options.TrimBorder);
-[rr,cc] = dangetRemainingBlockIndices(options.BlockSize,mblocks,nblocks,rows_probed,cols_probed,ROIvec);
+[rr,cc] = getRemainingBlockIndices(options.BlockSize,mblocks,nblocks,rows_probed,cols_probed,ROIvec);
 row = rr(1);
 col = cc(1);
 
@@ -319,7 +105,7 @@ if destination_specified && isa(options.Destination,'ImageAdapter')
     dest_dispatcher = internal.images.AdapterDispatcher(options.Destination,'r+');
     
     % copy the first block into the upper-left of the output matrix
-    putBlock(dest_dispatcher,1,1,output_block,output_size);
+    putBlock(dest_dispatcher,[1,1],output_block,output_size);
 
 else
     % we need to create the output adapter.  this also writes the first
@@ -332,7 +118,7 @@ else
 end
 
 % get row/column indices of all unprocessed blocks
-[rr,cc,output_size_parallel,start_loc_parallel] = dangetRemainingBlockIndices...
+[rr,cc,output_size_parallel,start_loc_parallel] = getRemainingBlockIndices...
                 (options.BlockSize,mblocks,nblocks,rows_probed,cols_probed,ROIvec);
 output_size_parallel(:,3) = 3;
 
@@ -356,7 +142,7 @@ if options.UseParallel
     completed_blocks = false(1,numel(num_blocks));
     parallelLoop();
 else
-    danserialLoop();
+    serialLoop();
 end
 
 % clean up wait bar if we made one
@@ -430,8 +216,7 @@ end
                 start_location = start_loc_parallel(k,:);
 
                 % write to output
-                %putBlock(options.Destination,row,col,outputBlocks{blockInd},output_size_para(blockInd,:));
-                danputBlock(destination,start_location,outputBlocks{blockInd},out_size_curr);
+                putBlock(destination,start_location,outputBlocks{blockInd},out_size_curr);
             end
             
             updateWaitbar(sum(completed_blocks));
@@ -454,7 +239,7 @@ end
     end % parallelLoop
 
 
-    function danserialLoop
+    function serialLoop
         
         out_size_old = first_output_size;
         destination = options.Destination;
@@ -506,7 +291,7 @@ end
             if ~isempty(output_block)
                 out_size_curr = [size(output_block,1) size(output_block,2) 1];
                 start_location = [target_row target_col];
-                danputBlock(destination,start_location,output_block,out_size_curr);
+                putBlock(destination,start_location,output_block,out_size_curr);
                 out_size_old = out_size_curr;
             end
 
@@ -945,57 +730,20 @@ block_struct.blockSize = data_size - 2 * block_struct.border;
 
 end % getBlock
 
-
 %------------------------------------------------
-function putBlock(dest,row,col,data,output_size)
+function putBlock(dest,start_location,datain,output_size)
 
 % just bail on empty data
-if isempty(data)
+if isempty(datain)
     return
 end
 
-if size(data,3) == 2
-    data(:,:,3) = 0;
-end
-
-% compute destination location for target block
-target_start_row = 1 + (row - 1) * output_size(1);
-target_start_col = 1 + (col - 1) * output_size(2);
-
-% we clip the output location based on the size of the destination data
-max_row = target_start_row + output_size(1) - 1;
-max_col = target_start_col + output_size(2) - 1;
-excess = [0 0];
-if max_row > dest.ImageSize(1)
-    excess(1) = max_row - dest.ImageSize(1);
-end
-if max_col > dest.ImageSize(2)
-    excess(2) = max_col - dest.ImageSize(2);
-end
-
-% account for blocks that are too large and go beyond the destination edge
-output_size(1:2) = output_size(1:2) - excess;
-% account for edge blocks that are not padded and are not full block sized
-output_size(1:2) = min(output_size(1:2),[size(data,1) size(data,2)]);
-% write valid block data to destination
-start_loc = [target_start_row target_start_col];
-dest.writeRegion(start_loc,...
-    data(1:output_size(1),1:output_size(2),:));
-
-end % putBlock
-
-%------------------------------------------------
-function danputBlock(dest,start_location,data,output_size)
-
-% just bail on empty data
-if isempty(data)
-    return
-end
-size(data)
-size(output_size)
-
-if size(data,3) == 2
-    data(:,:,3) = 0;
+if size(datain,3) == 3
+    data(:,:,1) = datain(:,:,3);
+    data(:,:,2) = datain(:,:,2);
+    data(:,:,3) = datain(:,:,1);
+else
+    data = datain;
 end
 
 target_start_row = start_location(1);
@@ -1021,9 +769,7 @@ output_size(1:2) = min(output_size(1:2),[size(data,1) size(data,2)]);
 start_loc = start_location;
 dest.writeRegion(start_loc,...
     data(1:output_size(1),1:output_size(2),:));
-% dest.writeRegion(start_loc,data);
-
-end % danputBlock
+end % putBlock
 
 
 %----------------------------------------------
@@ -1060,7 +806,7 @@ end
 end % createInputAdapter
 
 %-------------------------------------------------------------------------
-function [rr,cc,outsize,start_location] = dangetRemainingBlockIndices(block_size,mblocks,nblocks,rows_probed,cols_probed,ROIvec)
+function [rr,cc,outsize,start_location] = getRemainingBlockIndices(block_size,mblocks,nblocks,rows_probed,cols_probed,ROIvec)
 
 numBlocks = mblocks * nblocks;
 
@@ -1267,38 +1013,6 @@ if rows_probed && cols_probed
     outsize = cell(length(rr),length(cc));
     outsize = SizeInBlk;
 end
-
-end % getRemainingBlockIndices
-
-
-%-------------------------------------------------------------------------
-function [rr,cc] = getRemainingBlockIndices(mblocks,nblocks,rows_probed,cols_probed)
-
-% get row/column indices of all unprocessed blocks
-% start with interior blocks (guaranteed unprobed rows/cols)
-[r,c] = meshgrid(2:mblocks,2:nblocks);
-rr = r(:);
-cc = c(:);
-
-% add unprocessed blocks from first row
-if cols_probed
-    end_col = nblocks - 1;
-else
-    end_col = nblocks;
-end
-[r,c] = meshgrid(1,2:end_col);
-rr = [r(:);rr];
-cc = [c(:);cc];
-
-% add unprocessed blocks from first column
-if rows_probed
-    end_row = mblocks - 1;
-else
-    end_row = mblocks;
-end
-[r,c] = meshgrid(2:end_row,1);
-rr = [r(:);rr];
-cc = [c(:);cc];
 
 end % getRemainingBlockIndices
 

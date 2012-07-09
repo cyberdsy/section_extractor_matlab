@@ -189,13 +189,18 @@ else
             pixRegion(2) = ROI(3);
             pixRegion(3) = ROI(2);
             pixRegion(4) = ROI(4);
-            inChan
+            
             img = imreadImaris(slideFile,outImageSize,reslevel,1,1,inChan,pixRegion);
             % if the output image is RGB but the input number of channels
             % is 2
-            
-            if length(outChan) > numChan
-                img(:,:,3) = uint8(zeros(outImageSize(1),outImageSize(2)));
+            if length(outChan) == 3
+                if length(outChan) > numChan
+                    img(:,:,3) = uint8(zeros(outImageSize(1),outImageSize(2)));
+                end
+                img_new(:,:,1) = img(:,:,3);
+                img_new(:,:,2) = img(:,:,2);
+                img_new(:,:,3) = img(:,:,1);
+                img = img_new;
             end
             imwrite(uint8(img),tiss_seq_tif,'compression','lzw');
 
@@ -482,13 +487,8 @@ else
         threshlo = str2double(get(handles.edit_threshlo,'String'));
         popupselec = get(handles.popupmenu_scale,'Value');
         popupcontents = cellstr(get(handles.popupmenu_scale,'String'));
-        scalefact = str2num(popupcontents{popupselec});
-        if isempty(scalefact)
-            reslevel = 1;
-        else
-            reslevel = log2(scalefact);
-        end
-        meta = imreadImarismeta(fname,reslevel);
+
+        meta = imreadImarismeta(fname,0);
         slideSize(1,1) = meta.height;
         slideSize(1,2) = meta.width;
 
@@ -549,7 +549,7 @@ else
         cc2keep = bwconncomp(BWopen);
         L2keep = labelmatrix(cc2keep);
         s = regionprops(cc2keep, 'PixelIdxList', 'Centroid','BoundingBox');
-        section_map = ind2rgb(L2keep,jet(16));
+        section_map = ind2rgb(L2keep,jet(10));
         imagesc(section_map);colormap 'gray';axis off;
 
 
@@ -574,7 +574,7 @@ else
         hold off
 
         userData.Sections = s;
-        userData.ROIslide = ROIslide;
+        userData.ROI = ROIslide;
         userData.section_map = section_map;
         userData.slideSize = slideSize;
         set(handles.figure1,'UserData',userData);        
@@ -582,6 +582,7 @@ else
         set(handles.text_numROIs,'Visible','on');
         set(handles.listbox_ROIs,'Visible','on');
         set(handles.listbox_ROIs,'String',num2str(ROIslide),'Value',1);
+        set(handles.popupmenu_scale,'String',{'1','2','4','8','16','32','64'},'Value',1);
     else
         errordlg('Channel should be 1, 2 or 3','modal')
         return
@@ -778,6 +779,35 @@ function popupmenu_scale_Callback(hObject, eventdata, handles)
 
 % Hints: contents = cellstr(get(hObject,'String')) returns popupmenu_scale contents as cell array
 %        contents{get(hObject,'Value')} returns selected item from popupmenu_scale
+userData = get(handles.figure1,'UserData');
+ROI = userData.ROI;
+fname = userData.slideFile;
+slideSize = userData.slideSize;
+popupselec = get(handles.popupmenu_scale,'Value');
+popupcontents = cellstr(get(handles.popupmenu_scale,'String'));
+scalefact = str2num(popupcontents{popupselec});
+if isempty(scalefact)
+    reslevel = 1;
+else
+    reslevel = log2(scalefact);
+end
+meta = imreadImarismeta(fname,reslevel);
+thumbSize(1,1) = meta.height;
+thumbSize(1,2) = meta.width;
+
+scale = double(thumbSize) ./ double(slideSize);
+
+for k = 1:length(ROI)
+    ROIslide(k,1) = floor(ROI(k,1) .* scale(1));
+    ROIslide(k,2) = floor(ROI(k,2) .* scale(1));
+    ROIslide(k,3) = floor(ROI(k,3) .* scale(2));
+    ROIslide(k,4) = floor(ROI(k,4) .* scale(2));
+end
+
+set(handles.listbox_ROIs,'Visible','on');
+set(handles.listbox_ROIs,'String',num2str(ROIslide),'Value',1);
+userData.ROIslide = ROIslide;
+set(handles.figure1,'UserData',userData);
 
 
 % --- Executes during object creation, after setting all properties.

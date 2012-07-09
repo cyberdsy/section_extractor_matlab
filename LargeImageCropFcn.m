@@ -3,8 +3,14 @@ function [ROIout BoundingBox] = LargeImageCropFcn(new_data,location,BlockSize,Bo
 if ~isempty(new_data)
 % Set up the large image and how many blocks it should have
     data = zeros(size(new_data,1),size(new_data,2),size(new_data,3));
-    for ii = 1:size(new_data,3)
-        data(:,:,ii) = new_data(:,:,ii);
+    channels = size(new_data,3);
+    if channels == 1
+        data = new_data;
+    elseif channels > 1
+        for ii = 1:channels
+            data(:,:,ii) = new_data(:,:,ii);
+        end
+        data(:,:,3) = zeros(size(new_data,1),size(new_data,2));
     end
     
     StartInBlock = [1 1];
