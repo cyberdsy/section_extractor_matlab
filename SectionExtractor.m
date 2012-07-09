@@ -733,7 +733,27 @@ function edit_channel_Callback(hObject, eventdata, handles)
 
 % Hints: get(hObject,'String') returns contents of edit_channel as text
 %        str2double(get(hObject,'String')) returns contents of edit_channel as a double
+userData = get(handles.figure1, 'UserData');
+fname = userData.slideFile;
 
+thumbmeta = imreadImarismeta(fname,4);
+thumbSize(1,1) = thumbmeta.height;
+thumbSize(1,2) = thumbmeta.width;
+numchan = userData.inChannels;
+channel = str2double(get(handles.edit_channel,'String'));
+if channel > numchan
+    errordlg('The channel does not exist in the input image','modal')
+    return
+end
+
+thumb = imreadImaris(fname,thumbSize,4,1,1,channel);
+set(handles.figure1,'CurrentAxes',handles.axes1)
+imagesc(thumb),colormap 'gray',axis off
+
+
+userData.thumbNailIm = thumb;
+
+set(handles.figure1, 'UserData', userData);
 
 % --- Executes during object creation, after setting all properties.
 function edit_channel_CreateFcn(hObject, eventdata, handles)
