@@ -569,10 +569,15 @@ else
             text(x, y, sprintf('%d',k), 'Color', 'r', ...
                 'FontWeight', 'bold');
             ROI(k,:) = (s(k).BoundingBox);
-            ROIslide (k,1) = floor(ROI(k,2) ./ scale(1));
-            ROIslide (k,2) = floor(ROI(k,1) ./ scale(1));
-            ROIslide (k,3) = floor(ROI(k,4) ./ scale(2));
-            ROIslide (k,4) = floor(ROI(k,3) ./ scale(2));
+            ROIslide(k,1) = floor(ROI(k,2) ./ scale(1));
+            ROIslide(k,2) = floor(ROI(k,1) ./ scale(1));
+            ROIslide(k,3) = floor(ROI(k,4) ./ scale(2));
+            ROIslide(k,4) = floor(ROI(k,3) ./ scale(2));
+            ROIdisp(k,1) = floor(ROI(k,1) ./ scale(1));
+            ROIdisp(k,2) = floor(ROI(k,2) ./ scale(1));
+            ROIdisp(k,3) = floor(ROI(k,3) ./ scale(2));
+            ROIdisp(k,4) = floor(ROI(k,4) ./ scale(2));
+
         end
         x = ROI(1,1);
         y = ROI(1,2);
@@ -589,7 +594,7 @@ else
         set(handles.text_numROIs,'String',strcat('Number of sections = ',num2str(numel(s))));
         set(handles.text_numROIs,'Visible','on');
         set(handles.listbox_ROIs,'Visible','on');
-        set(handles.listbox_ROIs,'String',num2str(ROIslide),'Value',1);
+        set(handles.listbox_ROIs,'String',num2str(ROIdisp),'Value',1);
         set(handles.popupmenu_scale,'String',{'1','2','4','8','16','32','64'},'Value',1);
     else
         errordlg('Channel should be 1, 2 or 3','modal')
@@ -830,10 +835,15 @@ for k = 1:length(ROI)
     ROIslide(k,2) = floor(ROI(k,2) .* scale(1));
     ROIslide(k,3) = floor(ROI(k,3) .* scale(2));
     ROIslide(k,4) = floor(ROI(k,4) .* scale(2));
+    ROIdisp(k,1) = floor(ROI(k,2) .* scale(1));
+    ROIdisp(k,2) = floor(ROI(k,1) .* scale(1));
+    ROIdisp(k,3) = floor(ROI(k,4) .* scale(2));
+    ROIdisp(k,4) = floor(ROI(k,3) .* scale(2));
+
 end
 
 set(handles.listbox_ROIs,'Visible','on');
-set(handles.listbox_ROIs,'String',num2str(ROIslide),'Value',1);
+set(handles.listbox_ROIs,'String',num2str(ROIdisp),'Value',1);
 userData.ROIslide = ROIslide;
 set(handles.figure1,'UserData',userData);
 
