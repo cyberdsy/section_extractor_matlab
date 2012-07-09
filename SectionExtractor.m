@@ -22,7 +22,7 @@ function varargout = SectionExtractor(varargin)
 
 % Edit the above text to modify the response to help SectionExtractor
 
-% Last Modified by GUIDE v2.5 05-Jul-2012 16:08:53
+% Last Modified by GUIDE v2.5 10-Jul-2012 09:02:53
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -512,9 +512,13 @@ else
         imagesc(BW);colormap 'gray';axis off;
 
         if dilateim
-            dilSize = str2double(get(handles.edit_dilateSE,'String'));
-            se = strel('disk',dilSize);
-            BWdil = imdilate(BW,se);
+            dilIter = str2double(get(handles.edit_iterDilate,'String'));
+            for idil = 1 : dilIter
+                dilSize = str2double(get(handles.edit_dilateSE,'String'));
+                se = strel('disk',dilSize);
+                BWdil = imdilate(BW,se);
+                BW = BWdil;
+            end
             imagesc(BWdil);colormap 'gray';axis off;
         else
             BWdil = BW;
@@ -528,9 +532,13 @@ else
         end
 
         if erodeim
-            eroSize = str2double(get(handles.edit_erodeSE,'String'));
-            se = strel('disk',eroSize);
-            BWero = imerode(BWclose,se);
+            eroIter = str2double(get(handles.edit_iterErode,'String'));
+            for iero = 1 : eroIter
+                eroSize = str2double(get(handles.edit_erodeSE,'String'));
+                se = strel('disk',eroSize);
+                BWero = imerode(BWclose,se);
+                BWclose = BWero;
+            end
             imagesc(BWero);colormap 'gray';axis off;
         else
             BWero = BWclose;
@@ -881,3 +889,49 @@ switch get(eventdata.NewValue,'Tag') % Get Tag of selected object.
         userData.OutputMode = 'Single';
 end
 set(handles.figure1, 'UserData', userData);
+
+
+
+function edit_iterDilate_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_iterDilate (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_iterDilate as text
+%        str2double(get(hObject,'String')) returns contents of edit_iterDilate as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit_iterDilate_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_iterDilate (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function edit_iterErode_Callback(hObject, eventdata, handles)
+% hObject    handle to edit_iterErode (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of edit_iterErode as text
+%        str2double(get(hObject,'String')) returns contents of edit_iterErode as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit_iterErode_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to edit_iterErode (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
