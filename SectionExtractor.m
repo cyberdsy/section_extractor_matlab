@@ -22,7 +22,7 @@ function varargout = SectionExtractor(varargin)
 
 % Edit the above text to modify the response to help SectionExtractor
 
-% Last Modified by GUIDE v2.5 10-Jul-2012 09:02:53
+% Last Modified by GUIDE v2.5 10-Jul-2012 10:33:40
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -945,3 +945,10 @@ function edit_iterErode_CreateFcn(hObject, eventdata, handles)
 if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
     set(hObject,'BackgroundColor','white');
 end
+
+
+% --- Executes on button press in pushbutton_manual.
+function pushbutton_manual_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton_manual (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
