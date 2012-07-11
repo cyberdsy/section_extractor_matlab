@@ -201,7 +201,7 @@ classdef ImarisROIAdapter < ImageAdapter
             rowstart = region_start(1);
             colstart = region_start(2);
             data = imreadImaris(obj.Filename,obj.ImageSize,obj.reslevel,obj.zSlices,obj.TimePoints,...
-              obj.Channels,[rowstart numrows colstart numcols]);
+              obj.Channels,[colstart rowstart numcols numrows]);
         end % readRegion
         
         

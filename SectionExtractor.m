@@ -22,7 +22,7 @@ function varargout = SectionExtractor(varargin)
 
 % Edit the above text to modify the response to help SectionExtractor
 
-% Last Modified by GUIDE v2.5 10-Jul-2012 10:33:40
+% Last Modified by GUIDE v2.5 10-Jul-2012 12:49:38
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -53,13 +53,16 @@ function SectionExtractor_OpeningFcn(hObject, eventdata, handles, varargin)
 % varargin   command line arguments to SectionExtractor (see VARARGIN)
 
 set(handles.axes1,'Visible','off');
-set(handles.listbox_ROIs,'Visible','off');
+set(handles.listbox_ROIs,'Visible','on');
+set(handles.uipanel_info,'Visible','off');
 userData.dilateim = 'true';
 userData.closeim = 'true';
 userData.erodeim = 'true';
 userData.ImageMode = 'fluoro';
 userData.OutputMode = 'Single';
 userData.Segmentation.choice = 'all';
+userData.ROI.roicounter = 0;
+userData.imseg = 'auto';
 
 % Choose default command line output for SectionExtractor
 handles.output = hObject;
@@ -98,7 +101,7 @@ elseif ~isfield(userData,'thumbNailFile')
 else
     numChan = userData.inChannels;
     choice = userData.Segmentation.choice;
-    ROIvec = userData.ROIslide;
+    ROIvec = userData.ROI.scaled;
     
     switch choice
         case 'all'
@@ -153,7 +156,7 @@ else
         iSection = contents(ii);  
         % Crop a portion of the image set by the bounding box
         ROI = ROIvec(iSection,:);
-        outImageSize = [floor(ROI(3)) floor(ROI(4)) length(outChan)];
+        outImageSize = [floor(ROI(4)) floor(ROI(3)) length(outChan)];
         
         % make filename for each tissue section
         if iSection < 10
@@ -168,9 +171,13 @@ else
             %display tissue section name and ROI vector to command line
             tiss_seq_tif
             ROI
+            pixRegion(1,1) = ROI(2);
+            pixRegion(1,2) = ROI(1);
+            pixRegion(1,3) = ROI(4);
+            pixRegion(1,4) = ROI(3);
             
             %set up the output image size and cropping function
-            imgCropFcn = @(block_struct) LargeImageCropFcn(block_struct.data,block_struct.location,blocksize,ROI);
+            imgCropFcn = @(block_struct) LargeImageCropFcn(block_struct.data,block_struct.location,blocksize,pixRegion);
 
             FillVal = 1;
             FillVal = uint8(FillVal);
@@ -186,8 +193,8 @@ else
             ROI
             
             pixRegion(1) = ROI(1);
-            pixRegion(2) = ROI(3);
-            pixRegion(3) = ROI(2);
+            pixRegion(2) = ROI(2);
+            pixRegion(3) = ROI(3);
             pixRegion(4) = ROI(4);
             
             img = imreadImaris(slideFile,outImageSize,reslevel,1,1,inChan,pixRegion);
@@ -287,25 +294,30 @@ userData = get(handles.figure1, 'UserData');
 cd(path);
 
 set(handles.edit_slideFile,'String',fname,'Value',1);
-
+set(handles.uipanel_info,'Visible','on');
 userData.slideFile = fname;
 meta = imreadImarismeta(fname,0);
 slideSize(1,1) = meta.height;
 slideSize(1,2) = meta.width;
-thumbmeta = imreadImarismeta(fname,4);
+thumbmeta = imreadImarismeta(fname,5);
 thumbSize(1,1) = thumbmeta.height;
 thumbSize(1,2) = thumbmeta.width;
 numchan = meta.channels;
 channel = str2double(get(handles.edit_channel,'String'));
-thumb = imreadImaris(fname,thumbSize,4,1,1,channel);
-set(handles.figure1,'CurrentAxes',handles.axes1)
-imagesc(thumb),colormap 'gray',axis off
 
+set(handles.text_width,'String',['Image width =  ',num2str(slideSize(1,1))]);
+set(handles.text_height,'String',['Image height =  ',num2str(slideSize(1,2))]);
+set(handles.text_channels,'String',['Number of channels =  ',num2str(numchan)]);
+
+thumb = imreadImaris(fname,thumbSize,5,1,1,channel);
+set(handles.figure1,'CurrentAxes',handles.axes1);
+imagesc(thumb);colormap gray;axis off;
 userData.thumbNailFile = fname;
 userData.thumbNailIm = thumb;
-
+userData.thumbSize = thumbSize;
 userData.slideSize = slideSize;
 userData.inChannels = numchan;
+
 set(handles.figure1, 'UserData', userData);
 
 
@@ -378,24 +390,29 @@ function pushbutton_setThresh_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 userData = get(handles.figure1,'UserData');
-channel = str2double(get(handles.edit_channel,'String'));
-if channel > 0
-    thumb = userData.thumbNailIm;
-
-    %Identify tissue section
-%     [minlevel,minlevelper,maxlevel,maxlevelper,bw] ...
-%         = thresh_tool_dan_percent(thumb(:,:,channel));
-    [minlevel,bw] ...
-        = thresh_tool(thumb(:,:,channel));
-
-    thresh = minlevel;
-    set(handles.edit_threshlo,'String',num2str(round(thresh)));
-
-    userData.threshold = thresh;
-    set(handles.figure1,'UserData',userData);
-else
-    errordlg('Channel should be 1, 2 or 3','modal')
+if ~isfield(userData,'thumbNailFile')
+    errordlg('Load an image first','modal')
     return
+else
+    channel = str2double(get(handles.edit_channel,'String'));
+    if channel > 0
+        thumb = userData.thumbNailIm;
+
+        %Identify tissue section
+    %     [minlevel,minlevelper,maxlevel,maxlevelper,bw] ...
+    %         = thresh_tool_dan_percent(thumb(:,:,channel));
+        [minlevel,bw] ...
+            = thresh_tool(thumb(:,:,channel));
+
+        thresh = minlevel;
+        set(handles.edit_threshlo,'String',num2str(round(thresh)));
+
+        userData.threshold = thresh;
+        set(handles.figure1,'UserData',userData);
+    else
+        errordlg('Channel should be 1, 2 or 3','modal')
+        return
+    end
 end
 
 % --- Executes on button press in checkbox_erode.
@@ -474,133 +491,79 @@ if ~isfield(userData,'slideFile')
     errordlg('Load a slide image first','modal')
     return
 elseif ~isfield(userData,'thumbNailFile')
-    errordlg('Load a thumbnail image first','modal')
+    errordlg('Load a slide image first','modal')
     return    
 else
+        
+    fname = userData.slideFile;
+
+    threshlo = str2double(get(handles.edit_threshlo,'String'));
+
+    meta = imreadImarismeta(fname,0);
+    slideSize(1,1) = meta.height;
+    slideSize(1,2) = meta.width;
+
+    thumb = userData.thumbNailIm;
+    choices{1,1} = userData.dilateim;
+    choices{1,2} = userData.closeim;
+    choices{1,3} = userData.erodeim;
+    thumbSize = size(thumb);
+    thumbSize = thumbSize(1,1:2);
+
+    scale = double(thumbSize) ./ double(slideSize);
+    mode = userData.ImageMode;
+
+    dil(1) = str2double(get(handles.edit_iterDilate,'String'));
+    dil(2) = str2double(get(handles.edit_dilateSE,'String'));
+    ero(1) = str2double(get(handles.edit_iterErode,'String'));
+    ero(2) = str2double(get(handles.edit_erodeSE,'String'));
+    BWopen = SlideSegmentation(thumb,mode,choices,1,threshlo,dil,ero,400);
+
+    % create new connected components list for filtered objects
+    cc2keep = bwconncomp(BWopen);
+    L2keep = labelmatrix(cc2keep);
+    s = regionprops(cc2keep, 'PixelIdxList', 'Centroid','BoundingBox');
+
+    section_map = ind2rgb(L2keep,jet(16));
+%     hSP = userData.scrollhandle;
+%     api = iptgetapi(hSP);
+%     api.replaceImage(section_map,'DisplayRange',[0 255],'PreserveView',1);
     set(handles.figure1,'CurrentAxes',handles.axes1);
-    
-    channel = str2double(get(handles.edit_channel,'String'));
-    
-    if channel > 0
-        
-        fname = userData.slideFile;
-        threshlo = str2double(get(handles.edit_threshlo,'String'));
-        popupselec = get(handles.popupmenu_scale,'Value');
-        popupcontents = cellstr(get(handles.popupmenu_scale,'String'));
+    imagesc(section_map);axis off;
 
-        meta = imreadImarismeta(fname,0);
-        slideSize(1,1) = meta.height;
-        slideSize(1,2) = meta.width;
+    %label the objects
+    hold on
+    for k = 1:numel(s)
+        x = s(k).Centroid(1);
+        y = s(k).Centroid(2);
+        text(x, y, sprintf('%d',k), 'Color', 'r', ...
+            'FontWeight', 'bold');
+        ROIdispbox(k,:) = (s(k).BoundingBox);
 
-        thumb = userData.thumbNailIm;
-        dilateim = userData.dilateim;
-        closeim = userData.closeim;
-        erodeim = userData.erodeim;
-        thumbSize = size(thumb);
-        thumbSize = thumbSize(1,1:2);
-        
-        scale = double(thumbSize) ./ double(slideSize);
-        mode = userData.ImageMode;
-
-        switch mode
-            case 'bright'
-                BW = thumb(:,:,channel) < threshlo;
-            case 'fluoro'
-                BW = thumb(:,:,channel) > threshlo;
-        end
-
-        imagesc(BW);colormap 'gray';axis off;
-
-        if dilateim
-            dilIter = str2double(get(handles.edit_iterDilate,'String'));
-            for idil = 1 : dilIter
-                dilSize = str2double(get(handles.edit_dilateSE,'String'));
-                se = strel('disk',dilSize);
-                BWdil = imdilate(BW,se);
-                BW = BWdil;
-            end
-            imagesc(BWdil);colormap 'gray';axis off;
-        else
-            BWdil = BW;
-        end
-
-        if closeim
-            BWclose = imfill(BWdil,'holes');
-            imagesc(BWclose), colormap 'gray';axis off;
-        else
-            BWclose = BWdil;
-        end
-
-        if erodeim
-            eroIter = str2double(get(handles.edit_iterErode,'String'));
-            for iero = 1 : eroIter
-                eroSize = str2double(get(handles.edit_erodeSE,'String'));
-                se = strel('disk',eroSize);
-                BWero = imerode(BWclose,se);
-                BWclose = BWero;
-            end
-            imagesc(BWero);colormap 'gray';axis off;
-        else
-            BWero = BWclose;
-        end
-
-        % find the connected components
-        cc = bwconncomp(BWero);
-        L = labelmatrix(cc);
-
-        %filter by area to remove small objects
-        stats = regionprops(L,'Area');
-        idx = find([stats.Area]>400);
-        BWopen = ismember(L,idx);
-
-        % create new connected components list for filtered objects
-        cc2keep = bwconncomp(BWopen);
-        L2keep = labelmatrix(cc2keep);
-        s = regionprops(cc2keep, 'PixelIdxList', 'Centroid','BoundingBox');
-        section_map = ind2rgb(L2keep,jet(10));
-        imagesc(section_map);colormap 'gray';axis off;
-
-
-        %label the objects
-        hold on
-        for k = 1:numel(s)
-            x = s(k).Centroid(1);
-            y = s(k).Centroid(2);
-            text(x, y, sprintf('%d',k), 'Color', 'r', ...
-                'FontWeight', 'bold');
-            ROI(k,:) = (s(k).BoundingBox);
-            ROIslide(k,1) = floor(ROI(k,2) ./ scale(1));
-            ROIslide(k,2) = floor(ROI(k,1) ./ scale(1));
-            ROIslide(k,3) = floor(ROI(k,4) ./ scale(2));
-            ROIslide(k,4) = floor(ROI(k,3) ./ scale(2));
-            ROIdisp(k,1) = floor(ROI(k,1) ./ scale(1));
-            ROIdisp(k,2) = floor(ROI(k,2) ./ scale(1));
-            ROIdisp(k,3) = floor(ROI(k,3) ./ scale(2));
-            ROIdisp(k,4) = floor(ROI(k,4) ./ scale(2));
-
-        end
-        x = ROI(1,1);
-        y = ROI(1,2);
-        w = ROI(1,3);
-        h = ROI(1,4);
-        rectangle('Position',[x,y,w,h],'EdgeColor','r')
-        hold off
-
-        userData.Sections = s;
-        userData.ROI = ROIslide;
-        userData.section_map = section_map;
-        userData.slideSize = slideSize;
-        set(handles.figure1,'UserData',userData);        
-        set(handles.text_numROIs,'String',strcat('Number of sections = ',num2str(numel(s))));
-        set(handles.text_numROIs,'Visible','on');
-        set(handles.listbox_ROIs,'Visible','on');
-        set(handles.listbox_ROIs,'String',num2str(ROIdisp),'Value',1);
-        set(handles.popupmenu_scale,'String',{'1','2','4','8','16','32','64'},'Value',1);
-    else
-        errordlg('Channel should be 1, 2 or 3','modal')
-        return
-        
+        % and create the ROIs
+        ROI(k,:) = (s(k).BoundingBox);
+        ROIslide(k,1) = floor(ROI(k,1) ./ scale(1));
+        ROIslide(k,2) = floor(ROI(k,2) ./ scale(1));
+        ROIslide(k,3) = floor(ROI(k,3) ./ scale(2));
+        ROIslide(k,4) = floor(ROI(k,4) ./ scale(2));
     end
+    x = ROIdispbox(1,1);
+    y = ROIdispbox(1,2);
+    w = ROIdispbox(1,3);
+    h = ROIdispbox(1,4);
+    rectangle('Position',[x,y,w,h],'EdgeColor','r')
+    hold off
+
+    userData.AutoSections = s;
+    userData.ROI.autoloc = ROIslide;
+    userData.section_map = section_map;
+    userData.slideSize = slideSize;
+    set(handles.figure1,'UserData',userData);        
+    set(handles.text_numROIs,'String',strcat('Number of sections = ',num2str(numel(s))));
+    set(handles.text_numROIs,'Visible','on');
+    set(handles.listbox_ROIs,'Visible','on');
+    set(handles.listbox_ROIs,'String',num2str(ROIslide),'Value',1);
+    set(handles.popupmenu_scale,'String',{'Output scale','1','2','4','8','16'},'Value',1);
 
 end
 
@@ -615,11 +578,19 @@ if ~isfield(userData,'thumbNailFile')
     errordlg('Load a thumbnail image first','modal')
     return
 else
+    userData.ROI.roicounter = 0;
     set(handles.figure1,'CurrentAxes',handles.axes1);
     thumb = userData.thumbNailIm;
-    imagesc(thumb),colormap 'gray',axis off
+%     hSP = userData.scrollhandle;
+%     api = iptgetapi(hSP);
+%     api.replaceImage(thumb,'DisplayRange',[0 255],'PreserveView',1);
+    imagesc(thumb);colormap gray;axis off;
     set(handles.listbox_ROIs,'Visible','off');
     set(handles.text_numROIs,'Visible','off');
+    userData.ROI.display = [];
+    userData.ROI.manualloc = [];  
+    userData.ROI.autoloc = []; 
+    set(handles.figure1,'UserData',userData);
 end
 
 
@@ -633,27 +604,45 @@ function listbox_ROIs_Callback(hObject, eventdata, handles)
 %        contents{get(hObject,'Value')} returns selected item from listbox_ROIs
 userData = get(handles.figure1,'UserData');
 if ~isfield(userData,'thumbNailFile')
-    errordlg('Load a thumbnail image first','modal')
+    errordlg('Load an image first','modal')
     return
 else
-    contents = cellstr(get(hObject,'String'));
     pos = get(hObject,'Value');
-    ROIvec = contents{get(hObject,'Value')};
-    
-    section_map = userData.section_map;
-    s = userData.Sections;
-    imagesc(section_map);colormap 'gray';axis off;
-
-
-    %label the objects
+    imseg = userData.imseg;
+   
     hold on
-    for k = 1:numel(s)
-        x = s(k).Centroid(1);
-        y = s(k).Centroid(2);
-        text(x, y, sprintf('%d',k), 'Color', 'r', ...
-            'FontWeight', 'bold');
-        ROI(k,:) = (s(k).BoundingBox);
+    set(handles.figure1,'CurrentAxes',handles.axes1);
+    switch imseg
+        case 'auto'
+            section_map = userData.section_map;
+            imagesc(section_map);axis off;
+
+            %label the objects
+            s = userData.AutoSections;
+            for k = 1:numel(s)
+                x = s(k).Centroid(1);
+                y = s(k).Centroid(2);
+                text(x, y, sprintf('%d',k), 'Color', 'r', ...
+                    'FontWeight', 'bold');
+                ROI(k,:) = (s(k).BoundingBox);
+            end
+            userData.ROI.usrSelecAuto = pos;
+        case 'man'
+            section_map = userData.thumbNailIm;
+            ROI = userData.ManSections;
+            imagesc(section_map);axis off;
+            for k = 1:size(ROI,1)
+                xtext = ROI(k,1) + ROI(k,3) ./ 2;
+                ytext = ROI(k,2) + ROI(k,4) ./ 2;
+                text(xtext, ytext, sprintf('%d',k), 'Color', 'r', ...
+                    'FontWeight', 'bold');
+            end
+            userData.ROI.usrSelecMan = pos;
     end
+    
+%     hSP = userData.scrollhandle;
+%     api = iptgetapi(hSP);
+%     api.replaceImage(section_map,'DisplayRange',[0 255],'PreserveView',1);
     
     for kk = 1:length(pos)
         x(kk) = ROI(pos(kk),1);
@@ -662,9 +651,11 @@ else
         h(kk) = ROI(pos(kk),4);
         rectangle('Position',[x(kk),y(kk),w(kk),h(kk)],'EdgeColor','r');
     end
-    hold off
-end
 
+    hold off
+    
+end
+set(handles.figure1,'UserData',userData);
 
 % --- Executes during object creation, after setting all properties.
 function listbox_ROIs_CreateFcn(hObject, eventdata, handles)
@@ -749,7 +740,7 @@ function edit_channel_Callback(hObject, eventdata, handles)
 userData = get(handles.figure1, 'UserData');
 fname = userData.slideFile;
 
-thumbmeta = imreadImarismeta(fname,4);
+thumbmeta = imreadImarismeta(fname,5);
 thumbSize(1,1) = thumbmeta.height;
 thumbSize(1,2) = thumbmeta.width;
 numchan = userData.inChannels;
@@ -759,10 +750,13 @@ if channel > numchan
     return
 end
 
-thumb = imreadImaris(fname,thumbSize,4,1,1,channel);
-set(handles.figure1,'CurrentAxes',handles.axes1)
-imagesc(thumb),colormap 'gray',axis off
+thumb = imreadImaris(fname,thumbSize,5,1,1,channel);
 
+set(handles.figure1,'CurrentAxes',handles.axes1)
+% hSP = userData.scrollhandle;
+% api = iptgetapi(hSP);
+% api.replaceImage(thumb,'DisplayRange',[0 255],'PreserveView',1);
+imagesc(thumb);axis off;
 
 userData.thumbNailIm = thumb;
 
@@ -813,7 +807,13 @@ function popupmenu_scale_Callback(hObject, eventdata, handles)
 % Hints: contents = cellstr(get(hObject,'String')) returns popupmenu_scale contents as cell array
 %        contents{get(hObject,'Value')} returns selected item from popupmenu_scale
 userData = get(handles.figure1,'UserData');
-ROI = userData.ROI;
+imseg = userData.imseg;
+switch imseg
+    case 'auto'
+        ROI = userData.ROI.autoloc;
+    case'man'
+        ROI = userData.ROI.manualloc;
+end
 fname = userData.slideFile;
 slideSize = userData.slideSize;
 popupselec = get(handles.popupmenu_scale,'Value');
@@ -830,21 +830,16 @@ thumbSize(1,2) = meta.width;
 
 scale = double(thumbSize) ./ double(slideSize);
 
-for k = 1:length(ROI)
+for k = 1:size(ROI,1)
     ROIslide(k,1) = floor(ROI(k,1) .* scale(1));
     ROIslide(k,2) = floor(ROI(k,2) .* scale(1));
     ROIslide(k,3) = floor(ROI(k,3) .* scale(2));
     ROIslide(k,4) = floor(ROI(k,4) .* scale(2));
-    ROIdisp(k,1) = floor(ROI(k,2) .* scale(1));
-    ROIdisp(k,2) = floor(ROI(k,1) .* scale(1));
-    ROIdisp(k,3) = floor(ROI(k,4) .* scale(2));
-    ROIdisp(k,4) = floor(ROI(k,3) .* scale(2));
-
 end
 
 set(handles.listbox_ROIs,'Visible','on');
-set(handles.listbox_ROIs,'String',num2str(ROIdisp),'Value',1);
-userData.ROIslide = ROIslide;
+set(handles.listbox_ROIs,'String',num2str(ROIslide),'Value',1);
+userData.ROI.scaled = ROIslide;
 set(handles.figure1,'UserData',userData);
 
 
@@ -952,3 +947,197 @@ function pushbutton_manual_Callback(hObject, eventdata, handles)
 % hObject    handle to pushbutton_manual (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
+userData = get(handles.figure1, 'UserData');
+if ~isfield(userData,'thumbNailFile')
+    errordlg('Load an image first','modal')
+    return
+else
+    set(handles.popupmenu_scale,'String',{'Output scale','1','2','4','8','16'},'Value',1);
+    set(handles.figure1,'CurrentAxes',handles.axes1);
+    thumb = userData.thumbNailIm;
+    hold on
+    imagesc(thumb);axis off;
+    if isfield(userData.ROI,'manualloc')
+        ROIslide = userData.ROI.manualloc;
+        ROIpos = userData.ManSections;
+        for k = 1:size(ROIpos,1)
+            x = ROIpos(k,1);
+            y = ROIpos(k,2);
+            w = ROIpos(k,3);
+            h = ROIpos(k,4);
+            rectangle('Position',[x y w h],'EdgeColor','r');
+        end
+    end
+    hold off
+    thumbSize = size(thumb);
+    slideSize = userData.slideSize;
+    scale = thumbSize ./ slideSize;
+    imrow = thumbSize(1,1);
+    imcol = thumbSize(1,2);
+    % How many ROI's are already in existence?
+    iROI = userData.ROI.roicounter;
+
+    % Draw the ROI and get centroid pos and area
+    set(handles.figure1,'CurrentAxes',handles.axes1);
+    handles.hrectROI = imrect(handles.axes1);
+    
+    iROI = iROI + 1;
+    userData.ROI.roicounter = iROI;
+    ROIapi = iptgetapi(handles.hrectROI);
+    ROIapi.addNewPositionCallback(@(p) disp(p));
+    fcn = makeConstrainToRectFcn('imrect',[1 imcol],[1 imrow]);
+    setPositionConstraintFcn(handles.hrectROI,fcn);
+    position = wait(handles.hrectROI);
+    %position = getPosition(handles.hrectROI);
+    ROIpos(iROI,:) = position;
+    ROIslide(iROI,1) = floor(ROIpos(iROI,1) ./ scale(2));
+    ROIslide(iROI,2) = floor(ROIpos(iROI,2) ./ scale(1));
+    ROIslide(iROI,3) = floor((ROIpos(iROI,3))./ scale(2));
+    dw = floor(ROIslide(iROI,3) .* 0.1);
+    ROIslide(iROI,3) = ROIslide(iROI,3) + dw;
+    ROIslide(iROI,4) = floor((ROIpos(iROI,4))./ scale(1));
+    dh = floor(ROIslide(iROI,4) .* 0.05);
+    ROIslide(iROI,4) = ROIslide(iROI,4) + dh;
+    resume(handles.hrectROI)
+    
+    set(handles.listbox_ROIs,'Visible','on');
+    set(handles.listbox_ROIs,'String',num2str(ROIslide),'Value',1);
+    set(handles.text_numROIs,'String',strcat('Number of sections =  ',num2str(size(ROIslide,1))));
+    set(handles.text_numROIs,'Visible','on');
+    userData.ROI.manualloc = ROIslide;
+    userData.ManSections = ROIpos;
+    %userData.section_map = thumb;
+end
+set(handles.figure1, 'UserData', userData);
+
+
+% --- Executes when selected object is changed in uipanel_improc.
+function uipanel_improc_SelectionChangeFcn(hObject, eventdata, handles)
+% hObject    handle to the selected object in uipanel_improc 
+% eventdata  structure with the following fields (see UIBUTTONGROUP)
+%	EventName: string 'SelectionChanged' (read only)
+%	OldValue: handle of the previously selected object or empty if none was selected
+%	NewValue: handle of the currently selected object
+% handles    structure with handles and user data (see GUIDATA)
+userData = get(handles.figure1, 'UserData');
+set(handles.popupmenu_scale,'String',{'Output scale','1','2','4','8','16'},'Value',1);
+
+if ~isfield(userData,'thumbNailFile')
+    errordlg('Load an image first','modal')
+    return
+else
+    switch get(eventdata.NewValue,'Tag') % Get Tag of selected object.
+        case 'radiobutton_auto'
+            userData.imseg = 'auto';
+            if isfield(userData,'section_map')
+                section_map = userData.section_map;
+            else
+                section_map = userData.thumbNailIm;
+            end
+            set(handles.figure1,'CurrentAxes',handles.axes1);
+            imagesc(section_map);axis off;
+
+            if isfield(userData.ROI,'autoloc')
+                if isfield(userData.ROI,'usrSelecAuto')
+                    pos = userData.ROI.usrSelecAuto;
+                else
+                    pos = 1;
+                end
+                ROIslide = userData.ROI.autoloc;
+                s = userData.AutoSections;
+                hold on
+                for k = 1:numel(s)
+                    x = s(k).Centroid(1);
+                    y = s(k).Centroid(2);
+                    text(x, y, sprintf('%d',k), 'Color', 'r', ...
+                        'FontWeight', 'bold');
+                    ROI(k,:) = (s(k).BoundingBox);
+                end
+                x = ROI(pos,1);
+                y = ROI(pos,2);
+                w = ROI(pos,3);
+                h = ROI(pos,4);
+                rectangle('Position',[x,y,w,h],'EdgeColor','r');
+                hold off
+            else
+                ROIslide = [];
+                pos = 1;
+            end
+            set(handles.listbox_ROIs,'Visible','on');
+            set(handles.listbox_ROIs,'String',num2str(ROIslide),'Value',pos);            
+            set(handles.pushbutton_processThumb,'Visible','on');
+            set(handles.pushbutton_manual,'Visible','off');
+            set(handles.text1,'Visible','on');
+            set(handles.edit_threshlo,'Visible','on');
+            set(handles.pushbutton_setThresh,'Visible','on');
+            set(handles.checkbox_close,'Visible','on');
+            set(handles.checkbox_dilate,'Visible','on');
+            set(handles.text2,'Visible','on');
+            set(handles.edit_dilateSE,'Visible','on');
+            set(handles.text8,'Visible','on');
+            set(handles.edit_iterDilate,'Visible','on');
+            set(handles.checkbox_erode,'Visible','on');
+            set(handles.text3,'Visible','on');
+            set(handles.edit_erodeSE,'Visible','on');
+            set(handles.text9,'Visible','on');
+            set(handles.edit_iterErode,'Visible','on');
+            
+        case 'radiobutton_man'
+            userData.imseg = 'man';
+                        
+            set(handles.figure1,'CurrentAxes',handles.axes1);
+            thumb = userData.thumbNailIm;
+            imagesc(thumb);axis off;
+            
+            if isfield(userData.ROI,'manualloc')
+                if isfield(userData.ROI,'usrSelecMan')
+                    pos = userData.ROI.usrSelecMan;
+                else
+                    pos = 1;
+                end
+                ROIslide = userData.ROI.manualloc;
+                s = userData.ManSections;
+                hold on
+                for k = 1:size(ROIslide,1)
+                    xtext = s(k,1) + s(k,3) ./ 2;
+                    ytext = s(k,2) + s(k,4) ./ 2;
+                    text(xtext, ytext, sprintf('%d',k), 'Color', 'r', ...
+                        'FontWeight', 'bold');
+                end
+                x = s(pos,1);
+                y = s(pos,2);
+                w = s(pos,3);
+                h = s(pos,4);
+                rectangle('Position',[x,y,w,h],'EdgeColor','r');
+                hold off
+
+            else
+                ROIslide = [];
+                pos = 1;
+            end
+            set(handles.listbox_ROIs,'Visible','on');
+            set(handles.listbox_ROIs,'String',num2str(floor(ROIslide)),'Value',pos);
+
+
+            set(handles.pushbutton_processThumb,'Visible','off');
+            set(handles.text_numROIs,'Visible','off');
+            set(handles.pushbutton_manual,'Visible','on');
+            set(handles.text1,'Visible','off');
+            set(handles.edit_threshlo,'Visible','off');
+            set(handles.pushbutton_setThresh,'Visible','off');
+            set(handles.checkbox_close,'Visible','off');
+            set(handles.checkbox_dilate,'Visible','off');
+            set(handles.text2,'Visible','off');
+            set(handles.edit_dilateSE,'Visible','off');
+            set(handles.text8,'Visible','off');
+            set(handles.edit_iterDilate,'Visible','off');
+            set(handles.checkbox_erode,'Visible','off');
+            set(handles.text3,'Visible','off');
+            set(handles.edit_erodeSE,'Visible','off');
+            set(handles.text9,'Visible','off');
+            set(handles.edit_iterErode,'Visible','off');
+
+
+    end
+end
+set(handles.figure1, 'UserData', userData);
