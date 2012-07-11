@@ -394,25 +394,19 @@ if ~isfield(userData,'thumbNailFile')
     errordlg('Load an image first','modal')
     return
 else
-    channel = str2double(get(handles.edit_channel,'String'));
-    if channel > 0
-        thumb = userData.thumbNailIm;
+    thumb = userData.thumbNailIm;
 
-        %Identify tissue section
-    %     [minlevel,minlevelper,maxlevel,maxlevelper,bw] ...
-    %         = thresh_tool_dan_percent(thumb(:,:,channel));
-        [minlevel,bw] ...
-            = thresh_tool(thumb(:,:,channel));
+    %Identify tissue section
+%     [minlevel,minlevelper,maxlevel,maxlevelper,bw] ...
+%         = thresh_tool_dan_percent(thumb(:,:,channel));
+    [minlevel,bw] ...
+        = thresh_tool(thumb);
 
-        thresh = minlevel;
-        set(handles.edit_threshlo,'String',num2str(round(thresh)));
+    thresh = minlevel;
+    set(handles.edit_threshlo,'String',num2str(round(thresh)));
 
-        userData.threshold = thresh;
-        set(handles.figure1,'UserData',userData);
-    else
-        errordlg('Channel should be 1, 2 or 3','modal')
-        return
-    end
+    userData.threshold = thresh;
+    set(handles.figure1,'UserData',userData);
 end
 
 % --- Executes on button press in checkbox_erode.
