@@ -22,7 +22,7 @@ function varargout = SectionExtractor(varargin)
 
 % Edit the above text to modify the response to help SectionExtractor
 
-% Last Modified by GUIDE v2.5 10-Jul-2012 12:49:38
+% Last Modified by GUIDE v2.5 13-Jul-2012 16:06:17
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -93,28 +93,36 @@ function pushbutton_Segment_Callback(hObject, eventdata, handles)
 userData = get(handles.figure1,'UserData');
  
 if ~isfield(userData,'slideFile')
-    errordlg('Load a slide image first','modal')
+    errordlg('Load a slide image first','ERROR')
     return
 elseif ~isfield(userData,'thumbNailFile')
-    errordlg('Load a thumbnail image first','modal')
+    errordlg('Load a thumbnail image first','ERROR')
     return    
 else
     numChan = userData.inChannels;
     choice = userData.Segmentation.choice;
-    ROIvec = userData.ROI.scaled;
     
-    switch choice
-        case 'all'
-            first = 1;
-            last = size(ROIvec,1);
-            contents = first:last;
-        case 'selected'
-            contents = get(handles.listbox_ROIs,'Value');
-            first = 1;
-            last = length(contents);
+    if ~isfield(userData.ROI,'scaled')
+        imseg = userData.imseg;
+        switch imseg
+            case 'auto'
+                ROIvec = userData.ROI.autoloc;
+            case'man'
+                ROIvec = userData.ROI.manualloc;
+        end
+    else
+        ROIvec = userData.ROI.scaled;
     end
     
     mode = userData.OutputMode;
+    
+    switch choice
+        case 'all'
+            contents = 1:size(ROIvec,1);
+        case 'selected'
+            listcontents = get(handles.listbox_ROIs,'Value');
+            contents = 1:length(listcontents);
+    end
 
     switch mode
         case 'RGB'
@@ -123,97 +131,25 @@ else
         case 'Single'
                 outChan = str2double(get(handles.edit_outchan,'String'));  
                 if outChan > numChan
-                    errordlg('The channel does not exist in the input image','modal')
+                    errordlg('The channel does not exist in the input image','ERROR')
                     return
                 else
                     inChan = outChan;
                 end
     end
-
     
     popupselec = get(handles.popupmenu_scale,'Value');
     popupcontents = cellstr(get(handles.popupmenu_scale,'String'));
     scalefact = str2num(popupcontents{popupselec});
     if scalefact
         reslevel = log2(scalefact);
+    else
+        reslevel = 0;
     end
-    blocksize = [2000 2000];
 
     slideFile = userData.slideFile;
-    fname_length = length(slideFile);
-    slideFilename = slideFile(1:fname_length - 4);
     
-    my_adapter = ImarisROIAdapter(slideFile,'r',reslevel,inChan);
-
-    tic
-
-    %Loop over identified tissue sections. This part can be modified. Set the
-    %index iImage to 1 to segment a single section. Set it to any integer value
-    %between 1 and the length of idx to select a single section from the list
-    %of coordinates in bounding box. Or set values of ROI if these are known
-    %and make iImage = 1 (ROI = [x y width height].
-    for ii = first: last
-        iSection = contents(ii);  
-        % Crop a portion of the image set by the bounding box
-        ROI = ROIvec(iSection,:);
-        outImageSize = [floor(ROI(4)) floor(ROI(3)) length(outChan)];
-        
-        % make filename for each tissue section
-        if iSection < 10
-            tiss_seq_tif = sprintf([slideFilename,'section_00%d.tif'],iSection);
-        elseif iSection >= 10 && iSection < 100
-            tiss_seq_tif = sprintf([slideFilename,'section_0%d.tif'],iSection);
-        elseif iSection >= 100
-            tiss_seq_tif = sprintf([slideFilename,'section_%d.tif'],iSection);
-        end
-        
-        if outImageSize(1) > blocksize(1) || outImageSize(2) > blocksize(2)
-            %display tissue section name and ROI vector to command line
-            tiss_seq_tif
-            ROI
-            pixRegion(1,1) = ROI(2);
-            pixRegion(1,2) = ROI(1);
-            pixRegion(1,3) = ROI(4);
-            pixRegion(1,4) = ROI(3);
-            
-            %set up the output image size and cropping function
-            imgCropFcn = @(block_struct) LargeImageCropFcn(block_struct.data,block_struct.location,blocksize,pixRegion);
-
-            FillVal = 1;
-            FillVal = uint8(FillVal);
-
-            %do the cropping and saving of new images
-            my_output_adapter = ImarisROIAdapter(tiss_seq_tif,'w',reslevel,outChan,outImageSize,FillVal);
-            blockprocROI(my_adapter,blocksize,imgCropFcn,'UseParallel',true,'Destination',my_output_adapter);
-            my_output_adapter.close
-            clear my_output_adapter;
-        else
-            %display tissue section name and ROI vector to command line
-            tiss_seq_tif
-            ROI
-            
-            pixRegion(1) = ROI(1);
-            pixRegion(2) = ROI(2);
-            pixRegion(3) = ROI(3);
-            pixRegion(4) = ROI(4);
-            
-            img = imreadImaris(slideFile,outImageSize,reslevel,1,1,inChan,pixRegion);
-            % if the output image is RGB but the input number of channels
-            % is 2
-            if length(outChan) == 3
-                if length(outChan) > numChan
-                    img(:,:,3) = uint8(zeros(outImageSize(1),outImageSize(2)));
-                end
-                img_new(:,:,1) = img(:,:,3);
-                img_new(:,:,2) = img(:,:,2);
-                img_new(:,:,3) = img(:,:,1);
-                img = img_new;
-            end
-            imwrite(uint8(img),tiss_seq_tif,'compression','lzw');
-
-        end
-    end
-    toc
+    sectionImWrite(slideFile,ROIvec,numChan,inChan,outChan,contents,reslevel)
 end
 
 % --- Executes on button press in pushbutton7.
@@ -289,7 +225,6 @@ function pushbutton_addSlide_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 userData = get(handles.figure1, 'UserData');
 
-%open a calibration file
 [fname,path] = uigetfile('*.ims');
 cd(path);
 
@@ -305,8 +240,8 @@ thumbSize(1,2) = thumbmeta.width;
 numchan = meta.channels;
 channel = str2double(get(handles.edit_channel,'String'));
 
-set(handles.text_width,'String',['Image width =  ',num2str(slideSize(1,1))]);
-set(handles.text_height,'String',['Image height =  ',num2str(slideSize(1,2))]);
+set(handles.text_width,'String',['Image width =  ',num2str(slideSize(1,2))]);
+set(handles.text_height,'String',['Image height =  ',num2str(slideSize(1,1))]);
 set(handles.text_channels,'String',['Number of channels =  ',num2str(numchan)]);
 
 thumb = imreadImaris(fname,thumbSize,5,1,1,channel);
@@ -369,7 +304,13 @@ function edit_threshlo_Callback(hObject, eventdata, handles)
 
 % Hints: get(hObject,'String') returns contents of edit_threshlo as text
 %        str2double(get(hObject,'String')) returns contents of edit_threshlo as a double
+userData = get(handles.figure1, 'UserData');
 
+if ~isfield(userData,'slideFile')
+    errordlg('Load an image first','ERROR')
+    set(handles.edit_threshlo,'String','0');
+    return
+end
 
 % --- Executes during object creation, after setting all properties.
 function edit_threshlo_CreateFcn(hObject, eventdata, handles)
@@ -391,7 +332,7 @@ function pushbutton_setThresh_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 userData = get(handles.figure1,'UserData');
 if ~isfield(userData,'thumbNailFile')
-    errordlg('Load an image first','modal')
+    errordlg('Load an image first','ERROR')
     return
 else
     thumb = userData.thumbNailIm;
@@ -435,6 +376,13 @@ function edit_dilateSE_Callback(hObject, eventdata, handles)
 
 % Hints: get(hObject,'String') returns contents of edit_dilateSE as text
 %        str2double(get(hObject,'String')) returns contents of edit_dilateSE as a double
+userData = get(handles.figure1, 'UserData');
+
+if ~isfield(userData,'slideFile')
+    errordlg('Load an image first','ERROR')
+    set(handles.edit_dilateSE,'String','2');
+    return
+end
 
 
 % --- Executes during object creation, after setting all properties.
@@ -458,6 +406,13 @@ function edit_erodeSE_Callback(hObject, eventdata, handles)
 
 % Hints: get(hObject,'String') returns contents of edit_erodeSE as text
 %        str2double(get(hObject,'String')) returns contents of edit_erodeSE as a double
+userData = get(handles.figure1, 'UserData');
+
+if ~isfield(userData,'slideFile')
+    errordlg('Load an image first','ERROR')
+    set(handles.edit_erodeSE,'String','7');
+    return
+end
 
 
 % --- Executes during object creation, after setting all properties.
@@ -482,10 +437,10 @@ function pushbutton_processThumb_Callback(hObject, eventdata, handles)
 userData = get(handles.figure1,'UserData');
  
 if ~isfield(userData,'slideFile')
-    errordlg('Load a slide image first','modal')
+    errordlg('Load a slide image first','ERROR')
     return
 elseif ~isfield(userData,'thumbNailFile')
-    errordlg('Load a slide image first','modal')
+    errordlg('Load a slide image first','ERROR')
     return    
 else
         
@@ -536,10 +491,14 @@ else
 
         % and create the ROIs
         ROI(k,:) = (s(k).BoundingBox);
-        ROIslide(k,1) = floor(ROI(k,1) ./ scale(1));
+        ROIslide(k,1) = floor(ROI(k,1) ./ scale(2));
         ROIslide(k,2) = floor(ROI(k,2) ./ scale(1));
-        ROIslide(k,3) = floor(ROI(k,3) ./ scale(2));
-        ROIslide(k,4) = floor(ROI(k,4) ./ scale(2));
+        ROIslide(k,3) = floor((ROI(k,3))./ scale(2));
+        dw = floor(ROIslide(k,3) .* 0.1);
+        ROIslide(k,3) = ROIslide(k,3) + dw;
+        ROIslide(k,4) = floor((ROI(k,4))./ scale(1));
+        dh = floor(ROIslide(k,4) .* 0.05);
+        ROIslide(k,4) = ROIslide(k,4) + dh;   
     end
     x = ROIdispbox(1,1);
     y = ROIdispbox(1,2);
@@ -557,7 +516,7 @@ else
     set(handles.text_numROIs,'Visible','on');
     set(handles.listbox_ROIs,'Visible','on');
     set(handles.listbox_ROIs,'String',num2str(ROIslide),'Value',1);
-    set(handles.popupmenu_scale,'String',{'Output scale','1','2','4','8','16'},'Value',1);
+    set(handles.popupmenu_scale,'String',{'Output scale','1','2','4','8','16'},'Value',2);
 
 end
 
@@ -569,7 +528,7 @@ function pushbutton_clearROIs_Callback(hObject, eventdata, handles)
 userData = get(handles.figure1,'UserData');
 
 if ~isfield(userData,'thumbNailFile')
-    errordlg('Load a thumbnail image first','modal')
+    errordlg('Load a thumbnail image first','ERROR')
     return
 else
     userData.ROI.roicounter = 0;
@@ -598,7 +557,7 @@ function listbox_ROIs_Callback(hObject, eventdata, handles)
 %        contents{get(hObject,'Value')} returns selected item from listbox_ROIs
 userData = get(handles.figure1,'UserData');
 if ~isfield(userData,'thumbNailFile')
-    errordlg('Load an image first','modal')
+    errordlg('Load an image first','ERROR')
     return
 else
     pos = get(hObject,'Value');
@@ -633,10 +592,6 @@ else
             end
             userData.ROI.usrSelecMan = pos;
     end
-    
-%     hSP = userData.scrollhandle;
-%     api = iptgetapi(hSP);
-%     api.replaceImage(section_map,'DisplayRange',[0 255],'PreserveView',1);
     
     for kk = 1:length(pos)
         x(kk) = ROI(pos(kk),1);
@@ -732,28 +687,31 @@ function edit_channel_Callback(hObject, eventdata, handles)
 % Hints: get(hObject,'String') returns contents of edit_channel as text
 %        str2double(get(hObject,'String')) returns contents of edit_channel as a double
 userData = get(handles.figure1, 'UserData');
-fname = userData.slideFile;
 
-thumbmeta = imreadImarismeta(fname,5);
-thumbSize(1,1) = thumbmeta.height;
-thumbSize(1,2) = thumbmeta.width;
-numchan = userData.inChannels;
-channel = str2double(get(handles.edit_channel,'String'));
-if channel > numchan
-    errordlg('The channel does not exist in the input image','modal')
+if ~isfield(userData,'slideFile')
+    errordlg('Load an image first','ERROR')
+    set(handles.edit_channel,'String','1');
     return
+else
+    fname = userData.slideFile;
+
+    thumbmeta = imreadImarismeta(fname,5);
+    thumbSize(1,1) = thumbmeta.height;
+    thumbSize(1,2) = thumbmeta.width;
+    numchan = userData.inChannels;
+    channel = str2double(get(handles.edit_channel,'String'));
+    if channel > numchan || channel <=0
+        errordlg('The channel does not exist in the input image','ERROR')
+        return
+    end
+
+    thumb = imreadImaris(fname,thumbSize,5,1,1,channel);
+
+    set(handles.figure1,'CurrentAxes',handles.axes1)
+    imagesc(thumb);axis off;
+
+    userData.thumbNailIm = thumb;
 end
-
-thumb = imreadImaris(fname,thumbSize,5,1,1,channel);
-
-set(handles.figure1,'CurrentAxes',handles.axes1)
-% hSP = userData.scrollhandle;
-% api = iptgetapi(hSP);
-% api.replaceImage(thumb,'DisplayRange',[0 255],'PreserveView',1);
-imagesc(thumb);axis off;
-
-userData.thumbNailIm = thumb;
-
 set(handles.figure1, 'UserData', userData);
 
 % --- Executes during object creation, after setting all properties.
@@ -801,15 +759,7 @@ function popupmenu_scale_Callback(hObject, eventdata, handles)
 % Hints: contents = cellstr(get(hObject,'String')) returns popupmenu_scale contents as cell array
 %        contents{get(hObject,'Value')} returns selected item from popupmenu_scale
 userData = get(handles.figure1,'UserData');
-imseg = userData.imseg;
-switch imseg
-    case 'auto'
-        ROI = userData.ROI.autoloc;
-    case'man'
-        ROI = userData.ROI.manualloc;
-end
-fname = userData.slideFile;
-slideSize = userData.slideSize;
+
 popupselec = get(handles.popupmenu_scale,'Value');
 popupcontents = cellstr(get(handles.popupmenu_scale,'String'));
 scalefact = str2num(popupcontents{popupselec});
@@ -818,22 +768,34 @@ if isempty(scalefact)
 else
     reslevel = log2(scalefact);
 end
-meta = imreadImarismeta(fname,reslevel);
-thumbSize(1,1) = meta.height;
-thumbSize(1,2) = meta.width;
 
-scale = double(thumbSize) ./ double(slideSize);
+imseg = userData.imseg;
+if isfield(userData.ROI,'autoloc') || isfield(userData.ROI,'manualloc')
+    switch imseg
+        case 'auto'
+            ROI = userData.ROI.autoloc;
+        case'man'
+            ROI = userData.ROI.manualloc;
+    end
+    fname = userData.slideFile;
+    slideSize = userData.slideSize;
+    meta = imreadImarismeta(fname,reslevel);
+    thumbSize(1,1) = meta.height;
+    thumbSize(1,2) = meta.width;
 
-for k = 1:size(ROI,1)
-    ROIslide(k,1) = floor(ROI(k,1) .* scale(1));
-    ROIslide(k,2) = floor(ROI(k,2) .* scale(1));
-    ROIslide(k,3) = floor(ROI(k,3) .* scale(2));
-    ROIslide(k,4) = floor(ROI(k,4) .* scale(2));
+    scale = double(thumbSize) ./ double(slideSize);
+
+    for k = 1:size(ROI,1)
+        ROIslide(k,1) = floor(ROI(k,1) .* scale(2));
+        ROIslide(k,2) = floor(ROI(k,2) .* scale(1));
+        ROIslide(k,3) = floor(ROI(k,3) .* scale(2));
+        ROIslide(k,4) = floor(ROI(k,4) .* scale(1));
+    end
+
+    set(handles.listbox_ROIs,'Visible','on');
+    set(handles.listbox_ROIs,'String',num2str(ROIslide),'Value',1);
+    userData.ROI.scaled = ROIslide;
 end
-
-set(handles.listbox_ROIs,'Visible','on');
-set(handles.listbox_ROIs,'String',num2str(ROIslide),'Value',1);
-userData.ROI.scaled = ROIslide;
 set(handles.figure1,'UserData',userData);
 
 
@@ -857,6 +819,13 @@ function edit_outchan_Callback(hObject, eventdata, handles)
 
 % Hints: get(hObject,'String') returns contents of edit_outchan as text
 %        str2double(get(hObject,'String')) returns contents of edit_outchan as a double
+userData = get(handles.figure1, 'UserData');
+
+if ~isfield(userData,'slideFile')
+    errordlg('Load an image first','ERROR')
+    set(handles.edit_outchan,'String','1');
+    return
+end
 
 
 % --- Executes during object creation, after setting all properties.
@@ -898,6 +867,13 @@ function edit_iterDilate_Callback(hObject, eventdata, handles)
 
 % Hints: get(hObject,'String') returns contents of edit_iterDilate as text
 %        str2double(get(hObject,'String')) returns contents of edit_iterDilate as a double
+userData = get(handles.figure1, 'UserData');
+
+if ~isfield(userData,'slideFile')
+    errordlg('Load an image first','ERROR')
+    set(handles.edit_iterDilate,'String','1');
+    return
+end
 
 
 % --- Executes during object creation, after setting all properties.
@@ -921,6 +897,13 @@ function edit_iterErode_Callback(hObject, eventdata, handles)
 
 % Hints: get(hObject,'String') returns contents of edit_iterErode as text
 %        str2double(get(hObject,'String')) returns contents of edit_iterErode as a double
+userData = get(handles.figure1, 'UserData');
+
+if ~isfield(userData,'slideFile')
+    errordlg('Load an image first','ERROR')
+    set(handles.edit_iterErode,'String','1');
+    return
+end
 
 
 % --- Executes during object creation, after setting all properties.
@@ -935,76 +918,6 @@ if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgr
     set(hObject,'BackgroundColor','white');
 end
 
-
-% --- Executes on button press in pushbutton_manual.
-function pushbutton_manual_Callback(hObject, eventdata, handles)
-% hObject    handle to pushbutton_manual (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-userData = get(handles.figure1, 'UserData');
-if ~isfield(userData,'thumbNailFile')
-    errordlg('Load an image first','modal')
-    return
-else
-    set(handles.popupmenu_scale,'String',{'Output scale','1','2','4','8','16'},'Value',1);
-    set(handles.figure1,'CurrentAxes',handles.axes1);
-    thumb = userData.thumbNailIm;
-    hold on
-    imagesc(thumb);axis off;
-    if isfield(userData.ROI,'manualloc')
-        ROIslide = userData.ROI.manualloc;
-        ROIpos = userData.ManSections;
-        for k = 1:size(ROIpos,1)
-            x = ROIpos(k,1);
-            y = ROIpos(k,2);
-            w = ROIpos(k,3);
-            h = ROIpos(k,4);
-            rectangle('Position',[x y w h],'EdgeColor','r');
-        end
-    end
-    hold off
-    thumbSize = size(thumb);
-    slideSize = userData.slideSize;
-    scale = thumbSize ./ slideSize;
-    imrow = thumbSize(1,1);
-    imcol = thumbSize(1,2);
-    % How many ROI's are already in existence?
-    iROI = userData.ROI.roicounter;
-
-    % Draw the ROI and get centroid pos and area
-    set(handles.figure1,'CurrentAxes',handles.axes1);
-    handles.hrectROI = imrect(handles.axes1);
-    
-    iROI = iROI + 1;
-    userData.ROI.roicounter = iROI;
-    ROIapi = iptgetapi(handles.hrectROI);
-    ROIapi.addNewPositionCallback(@(p) disp(p));
-    fcn = makeConstrainToRectFcn('imrect',[1 imcol],[1 imrow]);
-    setPositionConstraintFcn(handles.hrectROI,fcn);
-    position = wait(handles.hrectROI);
-    %position = getPosition(handles.hrectROI);
-    ROIpos(iROI,:) = position;
-    ROIslide(iROI,1) = floor(ROIpos(iROI,1) ./ scale(2));
-    ROIslide(iROI,2) = floor(ROIpos(iROI,2) ./ scale(1));
-    ROIslide(iROI,3) = floor((ROIpos(iROI,3))./ scale(2));
-    dw = floor(ROIslide(iROI,3) .* 0.1);
-    ROIslide(iROI,3) = ROIslide(iROI,3) + dw;
-    ROIslide(iROI,4) = floor((ROIpos(iROI,4))./ scale(1));
-    dh = floor(ROIslide(iROI,4) .* 0.05);
-    ROIslide(iROI,4) = ROIslide(iROI,4) + dh;
-    resume(handles.hrectROI)
-    
-    set(handles.listbox_ROIs,'Visible','on');
-    set(handles.listbox_ROIs,'String',num2str(ROIslide),'Value',1);
-    set(handles.text_numROIs,'String',strcat('Number of sections =  ',num2str(size(ROIslide,1))));
-    set(handles.text_numROIs,'Visible','on');
-    userData.ROI.manualloc = ROIslide;
-    userData.ManSections = ROIpos;
-    %userData.section_map = thumb;
-end
-set(handles.figure1, 'UserData', userData);
-
-
 % --- Executes when selected object is changed in uipanel_improc.
 function uipanel_improc_SelectionChangeFcn(hObject, eventdata, handles)
 % hObject    handle to the selected object in uipanel_improc 
@@ -1014,10 +927,12 @@ function uipanel_improc_SelectionChangeFcn(hObject, eventdata, handles)
 %	NewValue: handle of the currently selected object
 % handles    structure with handles and user data (see GUIDATA)
 userData = get(handles.figure1, 'UserData');
-set(handles.popupmenu_scale,'String',{'Output scale','1','2','4','8','16'},'Value',1);
+set(handles.popupmenu_scale,'String',{'Output scale','1','2','4','8','16'},'Value',2);
 
 if ~isfield(userData,'thumbNailFile')
-    errordlg('Load an image first','modal')
+    errordlg('Load an image first','ERROR')
+    set(handles.radiobutton_man,'Value',0.0);
+    set(handles.radiobutton_auto,'Value',1.0);
     return
 else
     switch get(eventdata.NewValue,'Tag') % Get Tag of selected object.
@@ -1061,6 +976,7 @@ else
             set(handles.listbox_ROIs,'String',num2str(ROIslide),'Value',pos);            
             set(handles.pushbutton_processThumb,'Visible','on');
             set(handles.pushbutton_manual,'Visible','off');
+            set(handles.togglebutton_DrawROI,'Visible','off');
             set(handles.text1,'Visible','on');
             set(handles.edit_threshlo,'Visible','on');
             set(handles.pushbutton_setThresh,'Visible','on');
@@ -1090,7 +1006,7 @@ else
                     pos = 1;
                 end
                 ROIslide = userData.ROI.manualloc;
-                s = userData.ManSections;
+                s = userData.ROI.ManSections;
                 hold on
                 for k = 1:size(ROIslide,1)
                     xtext = s(k,1) + s(k,3) ./ 2;
@@ -1116,6 +1032,7 @@ else
             set(handles.pushbutton_processThumb,'Visible','off');
             set(handles.text_numROIs,'Visible','off');
             set(handles.pushbutton_manual,'Visible','on');
+            set(handles.togglebutton_DrawROI,'Visible','on');
             set(handles.text1,'Visible','off');
             set(handles.edit_threshlo,'Visible','off');
             set(handles.pushbutton_setThresh,'Visible','off');
@@ -1133,5 +1050,245 @@ else
 
 
     end
+end
+set(handles.figure1, 'UserData', userData);
+
+
+% --- Executes on button press in pushbutton_selectfiles.
+function pushbutton_selectfiles_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton_selectfiles (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+userData = get(handles.figure1,'UserData');
+files = uipickfiles('FilterSpec','*.ims','out','struct'); %external fuction
+filenames = {files.name};
+numfiles = length(filenames);
+fname = filenames{1};
+A = findstr('/',fname);
+B = length(A);
+C = A(B);
+impath = fname(1:C);
+cd(impath);
+userData.Batch.filenames = filenames;
+set(handles.figure1,'UserData',userData);
+
+% --- Executes on button press in pushbutton_batch.
+function pushbutton_batch_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton_batch (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+userData = get(handles.figure1,'UserData');
+
+if ~isfield(userData,'Batch')
+    errordlg('Choose images for batch processing','ERROR')
+    return
+else
+    filenames = userData.Batch.filenames;
+    
+    for iFile = 1: length(filenames)
+        fname = filenames{iFile};
+        
+        threshlo = str2double(get(handles.edit_threshlo,'String'));
+        channel = str2double(get(handles.edit_channel,'String'));
+        
+        popupselec = get(handles.popupmenu_scale,'Value');
+        popupcontents = cellstr(get(handles.popupmenu_scale,'String'));
+        scalefact = str2num(popupcontents{popupselec});
+        if scalefact
+            reslevel = log2(scalefact);
+        else
+            reslevel = 0;
+        end
+
+        meta = imreadImarismeta(fname,reslevel);
+        slideSize(1,1) = meta.height;
+        slideSize(1,2) = meta.width;
+        numChan = meta.channels;
+        
+        thumbmeta = imreadImarismeta(fname,5);
+        thumbSize(1,1) = thumbmeta.height;
+        thumbSize(1,2) = thumbmeta.width;
+        thumb = imreadImaris(fname,thumbSize,5,1,1,channel);
+        
+        choices{1,1} = userData.dilateim;
+        choices{1,2} = userData.closeim;
+        choices{1,3} = userData.erodeim;
+
+        scale = double(thumbSize) ./ double(slideSize);
+        
+        mode = userData.ImageMode;
+
+        dil(1) = str2double(get(handles.edit_iterDilate,'String'));
+        dil(2) = str2double(get(handles.edit_dilateSE,'String'));
+        ero(1) = str2double(get(handles.edit_iterErode,'String'));
+        ero(2) = str2double(get(handles.edit_erodeSE,'String'));
+        
+        BWopen = SlideSegmentation(thumb,mode,choices,1,threshlo,dil,ero,400);
+
+        % create new connected components list for filtered objects
+        cc2keep = bwconncomp(BWopen);
+        s = regionprops(cc2keep, 'PixelIdxList', 'Centroid','BoundingBox');
+
+        %label the objects
+        for k = 1:numel(s)
+            % and create the ROIs
+            ROI(k,:) = (s(k).BoundingBox);
+            ROIslide(k,1) = floor(ROI(k,1) ./ scale(2));
+            ROIslide(k,2) = floor(ROI(k,2) ./ scale(1));
+            ROIslide(k,3) = floor((ROI(k,3))./ scale(2));
+            dw = floor(ROIslide(k,3) .* 0.1);
+            ROIslide(k,3) = ROIslide(k,3) + dw;
+            ROIslide(k,4) = floor((ROI(k,4))./ scale(1));
+            dh = floor(ROIslide(k,4) .* 0.05);
+            ROIslide(k,4) = ROIslide(k,4) + dh;        
+        end
+        
+        mode = userData.OutputMode;
+        contents = 1:size(ROIslide,1);
+
+        switch mode
+            case 'RGB'
+                    outChan = 1:3;
+                    inChan = 1:numChan;
+            case 'Single'
+                    outChan = str2double(get(handles.edit_outchan,'String'));  
+                    if outChan > numChan
+                        errordlg('The channel does not exist in the input image','ERROR')
+                        return
+                    else
+                        inChan = outChan;
+                    end
+        end
+
+        sectionImWrite(fname,ROIslide,numChan,inChan,outChan,contents,reslevel)
+
+        
+    end
+    
+end
+
+
+% --- Executes on button press in togglebutton_DrawROI.
+function togglebutton_DrawROI_Callback(hObject, eventdata, handles)
+% hObject    handle to togglebutton_DrawROI (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hint: get(hObject,'Value') returns toggle state of togglebutton_DrawROI
+userData = get(handles.figure1, 'UserData');
+if ~isfield(userData,'thumbNailFile')
+    errordlg('Load an image first','ERROR')
+    return
+else
+    set(handles.popupmenu_scale,'String',{'Output scale','1','2','4','8','16'},'Value',2);
+    set(handles.figure1,'CurrentAxes',handles.axes1);
+    thumb = userData.thumbNailIm;
+    hold on
+    imagesc(thumb);axis off;
+    if isfield(userData.ROI,'ROIdisplay')
+        ROIdisp = userData.ROI.ROIdisplay;
+        for k = 1:size(ROIdisp,1)
+
+            x = ROIdisp(k,1);
+            y = ROIdisp(k,2);
+            w = ROIdisp(k,3);
+            h = ROIdisp(k,4);
+            rectangle('Position',[x y w h],'EdgeColor','r');
+
+        end
+    end
+    hold off
+    thumbSize = size(thumb);
+    imrow = thumbSize(1,1);
+    imcol = thumbSize(1,2);
+    % How many ROI's are already in existence?
+    % Draw the ROI and get centroid pos and area
+    set(handles.figure1,'CurrentAxes',handles.axes1);
+    hrectROI = imrect(handles.axes1);
+
+    ROIapi = iptgetapi(hrectROI);
+    ROIapi.addNewPositionCallback(@(p) disp(p));
+    fcn = makeConstrainToRectFcn('imrect',[1 imcol],[1 imrow]);
+    setPositionConstraintFcn(hrectROI,fcn);
+
+    userData.ROI.recthandle = hrectROI;
+end
+set(handles.figure1, 'UserData', userData);
+
+
+% --- Executes during object creation, after setting all properties.
+function pushbutton_manual_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to pushbutton_manual (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% --- Executes on button press in pushbutton_manual.
+function pushbutton_manual_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton_manual (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+userData = get(handles.figure1, 'UserData');
+if ~isfield(userData,'thumbNailFile')
+    errordlg('Load an image first','ERROR')
+    return
+else
+    set(handles.popupmenu_scale,'String',{'Output scale','1','2','4','8','16'},'Value',2);
+    set(handles.figure1,'CurrentAxes',handles.axes1);
+    thumb = userData.thumbNailIm;
+    hold on
+    %imagesc(thumb);axis off;
+    if isfield(userData.ROI,'recthandle')
+
+        hrectROI = userData.ROI.recthandle;
+        position = getPosition(hrectROI);
+        ROIpos = position(end,:);
+        
+        thumbSize = size(thumb);
+        slideSize = userData.slideSize;
+        scale = thumbSize ./ slideSize;
+
+        % How many ROI's are already in existence?
+        iROI = userData.ROI.roicounter;
+        if isfield(userData.ROI,'manualloc');
+            ROIslide = userData.ROI.manualloc;
+            ROIdisp = userData.ROI.ROIdisplay;
+        end        
+        % Draw the ROI and get centroid pos and area
+        set(handles.figure1,'CurrentAxes',handles.axes1);
+
+        iROI = iROI + 1;
+        ROIdisp(iROI,1) = floor(ROIpos(1,1));
+        ROIdisp(iROI,2) = floor(ROIpos(1,2));
+        ROIdisp(iROI,3) = floor(ROIpos(1,3));
+        ROIdisp(iROI,4) = floor(ROIpos(1,4));
+
+        ROIslide(iROI,1) = floor(ROIpos(1,1) ./ scale(2));
+        ROIslide(iROI,2) = floor(ROIpos(1,2) ./ scale(1));
+        ROIslide(iROI,3) = floor((ROIpos(1,3))./ scale(2));
+        dw = floor(ROIslide(iROI,3) .* 0.1);
+        ROIslide(iROI,3) = ROIslide(iROI,3) + dw;
+        ROIslide(iROI,4) = floor((ROIpos(1,4))./ scale(1));
+        dh = floor(ROIslide(iROI,4) .* 0.05);
+        ROIslide(iROI,4) = ROIslide(iROI,4) + dh;
+
+        for k = 1:size(ROIdisp,1)
+
+            x = ROIdisp(k,1);
+            y = ROIdisp(k,2);
+            w = ROIdisp(k,3);
+            h = ROIdisp(k,4);
+            rectangle('Position',[x y w h],'EdgeColor','r');
+
+        end
+    end
+    hold off
+    
+    set(handles.listbox_ROIs,'Visible','on');
+    set(handles.listbox_ROIs,'String',num2str(ROIslide),'Value',1);
+    set(handles.text_numROIs,'String',strcat('Number of sections =  ',num2str(size(ROIslide,1))));
+    set(handles.text_numROIs,'Visible','on');
+    userData.ROI.manualloc = ROIslide;
+    userData.ROI.ROIdisplay = ROIdisp;
+    userData.ROI.roicounter = iROI;
 end
 set(handles.figure1, 'UserData', userData);
