@@ -22,7 +22,7 @@ function varargout = SectionExtractor(varargin)
 
 % Edit the above text to modify the response to help SectionExtractor
 
-% Last Modified by GUIDE v2.5 13-Jul-2012 16:06:17
+% Last Modified by GUIDE v2.5 16-Jul-2012 10:17:32
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -929,7 +929,7 @@ function uipanel_improc_SelectionChangeFcn(hObject, eventdata, handles)
 userData = get(handles.figure1, 'UserData');
 set(handles.popupmenu_scale,'String',{'Output scale','1','2','4','8','16'},'Value',2);
 
-if ~isfield(userData,'thumbNailFile')
+if ~isfield(userData,'slideFile')
     errordlg('Load an image first','ERROR')
     set(handles.radiobutton_man,'Value',0.0);
     set(handles.radiobutton_auto,'Value',1.0);
@@ -1060,6 +1060,7 @@ function pushbutton_selectfiles_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 userData = get(handles.figure1,'UserData');
+set(handles.text_cropslide,'Visible','off');
 files = uipickfiles('FilterSpec','*.ims','out','struct'); %external fuction
 filenames = {files.name};
 numfiles = length(filenames);
@@ -1078,16 +1079,22 @@ function pushbutton_batch_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 userData = get(handles.figure1,'UserData');
+if ~isfield(userData,'slideFile')
+    errordlg('You should load a single file and setup the segmentation settings first','ERROR')
+    return
+end
 
 if ~isfield(userData,'Batch')
     errordlg('Choose images for batch processing','ERROR')
     return
 else
     filenames = userData.Batch.filenames;
-    
-    for iFile = 1: length(filenames)
+    numfiles = length(filenames);
+    for iFile = 1: numfiles
         fname = filenames{iFile};
-        
+        set(handles.text_cropslide,'Visible','on');
+        cropslideStr = [sprintf('Cropping slide %d',iFile),' of ',sprintf('%d',numfiles)];
+        set(handles.text_cropslide,'String',cropslideStr);
         threshlo = str2double(get(handles.edit_threshlo,'String'));
         channel = str2double(get(handles.edit_channel,'String'));
         
@@ -1176,7 +1183,7 @@ function togglebutton_DrawROI_Callback(hObject, eventdata, handles)
 
 % Hint: get(hObject,'Value') returns toggle state of togglebutton_DrawROI
 userData = get(handles.figure1, 'UserData');
-if ~isfield(userData,'thumbNailFile')
+if ~isfield(userData,'slideFile')
     errordlg('Load an image first','ERROR')
     return
 else
@@ -1228,7 +1235,7 @@ function pushbutton_manual_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 userData = get(handles.figure1, 'UserData');
-if ~isfield(userData,'thumbNailFile')
+if ~isfield(userData,'slideFile')
     errordlg('Load an image first','ERROR')
     return
 else
@@ -1292,3 +1299,24 @@ else
     userData.ROI.roicounter = iROI;
 end
 set(handles.figure1, 'UserData', userData);
+
+
+% --- Executes on button press in pushbutton_cancelbatch.
+function pushbutton_cancelbatch_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton_cancelbatch (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+cancelflag = 1;
+while cancelflag == 1
+    choice = questdlg('Are you sure you want to cancel the process?', ...
+     'Image overwrite','Yes','No','No');
+    % Handle response
+    switch choice
+        case 'Yes'
+            cancelflag = 0;
+            return
+            %break
+        case 'No'
+            continue
+    end
+end
