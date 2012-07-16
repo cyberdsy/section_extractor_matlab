@@ -1,4 +1,4 @@
-function varargout = SectionExtractor(varargin)
+ function varargout = SectionExtractor(varargin)
 % SECTIONEXTRACTOR MATLAB code for SectionExtractor.fig
 %      SECTIONEXTRACTOR, by itself, creates a new SECTIONEXTRACTOR or raises the existing
 %      singleton*.
@@ -64,10 +64,7 @@ userData.Segmentation.choice = 'all';
 userData.ROI.roicounter = 0;
 userData.imseg = 'auto';
 
-% Choose default command line output for SectionExtractor
 handles.output = hObject;
-
-% Update handles structure
 guidata(hObject, handles);
 set(handles.figure1,'UserData',userData);
 % UIWAIT makes SectionExtractor wait for user response (see UIRESUME)
