@@ -97,7 +97,6 @@ elseif ~isfield(userData,'thumbNailFile')
     return    
 else
     numChan = userData.inChannels;
-    choice = userData.Segmentation.choice;
     
     if ~isfield(userData.ROI,'scaled')
         imseg = userData.imseg;
@@ -111,16 +110,17 @@ else
         ROIvec = userData.ROI.scaled;
     end
     
-    mode = userData.OutputMode;
-    
+    choice = userData.Segmentation.choice;
+
     switch choice
         case 'all'
             contents = 1:size(ROIvec,1);
         case 'selected'
-            listcontents = get(handles.listbox_ROIs,'Value');
-            contents = 1:length(listcontents);
+            contents = get(handles.listbox_ROIs,'Value');
     end
-
+    
+    mode = userData.OutputMode;
+    
     switch mode
         case 'RGB'
                 outChan = 1:3;

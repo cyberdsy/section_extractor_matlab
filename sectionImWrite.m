@@ -14,8 +14,7 @@ function sectionImWrite(slideFile,ROIvec,numChan,inChan,outChan,contents,resleve
     %between 1 and the length of idx to select a single section from the list
     %of coordinates in bounding box. Or set values of ROI if these are known
     %and make iImage = 1 (ROI = [x y width height].
-    for ii = contents
-        iSection = contents(ii);  
+    for iSection = contents
         % Crop a portion of the image set by the bounding box
         ROI = ROIvec(iSection,:);
         outImageSize = [floor(ROI(4)) floor(ROI(3)) length(outChan)];
@@ -41,6 +40,7 @@ function sectionImWrite(slideFile,ROIvec,numChan,inChan,outChan,contents,resleve
                     [tiss_seq_tif,pathname] = uiputfile({'*.tif', 'TIFF Image File'; ...
                                     '*.*', 'All Files (*.*)'}, ...
                                     'Save current image as');
+                    existflag = 1;
             end
         end
 
